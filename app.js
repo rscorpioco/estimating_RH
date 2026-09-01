@@ -411,6 +411,44 @@
     });
   }
 
+  // Builds an Outlook Web "compose event" deep link, pre-filled with subject/date/time/body.
+  // This opens Outlook in a new tab with the invite ready to review — nothing is sent until
+  // the user clicks Send there. A static page can't complete a real Graph/OAuth sign-in on its
+  // own, so a prefilled compose link is the honest, no-backend way to hand this off to Outlook.
+  function buildOutlookDeepLink(rule, date, label) {
+    if (!date) return null;
+    const pad = (n) => String(n).padStart(2, "0");
+    const y = date.getFullYear();
+    const m = pad(date.getMonth() + 1);
+    const d = pad(date.getDate());
+    const dateStr = `${y}-${m}-${d}`;
+
+    let startdt, enddt, allday;
+    if (rule.time) {
+      const [hh, mm] = rule.time.split(":").map(Number);
+      startdt = `${dateStr}T${pad(hh)}:${pad(mm)}:00`;
+      let endH = hh, endM = mm + 30;
+      if (endM >= 60) { endM -= 60; endH += 1; }
+      enddt = `${dateStr}T${pad(endH)}:${pad(endM)}:00`;
+      allday = "false";
+    } else {
+      startdt = dateStr;
+      enddt = dateStr;
+      allday = "true";
+    }
+
+    const params = new URLSearchParams({
+      subject: label,
+      startdt,
+      enddt,
+      allday,
+      body: rule.note || "",
+    });
+    if (rule.to && rule.to.length) params.set("to", rule.to.join(";"));
+
+    return "https://outlook.office.com/calendar/0/deeplink/compose?" + params.toString();
+  }
+
   function renderScheduleAffordance(project) {
     const wrap = document.createElement("div");
     wrap.className = "item-inline-actions";
@@ -440,12 +478,12 @@
     table.className = "schedule-table";
     table.innerHTML = `
       <thead>
-        <tr><th>Item</th><th>Date</th><th>Time</th><th>Type</th><th>Note</th></tr>
+        <tr><th>Item</th><th>Date</th><th>Time</th><th>Type</th><th>Note</th><th></th></tr>
       </thead>
     `;
     const tbody = document.createElement("tbody");
 
-    computeSchedule(project).forEach(({ rule, dateLabel, timeLabel }) => {
+    computeSchedule(project).forEach(({ rule, date, dateLabel, timeLabel }) => {
       const tr = document.createElement("tr");
       const label = rule.id === "bidLevelDay" ? rule.label.replace("Level Day / Bid Day", levelOrBid) : rule.label;
       const typeChip = rule.type === "external" ? '<span class="type-chip external">Sends to others</span>' : '<span class="type-chip self">Self task</span>';
@@ -455,7 +493,18 @@
         <td class="mono-cell">${escapeHtml(timeLabel || "—")}</td>
         <td>${typeChip}</td>
         <td class="note-cell">${escapeHtml(rule.note || "")}</td>
+        <td></td>
       `;
+      const link = buildOutlookDeepLink(rule, date, label);
+      if (link) {
+        const a = document.createElement("a");
+        a.href = link;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.className = "btn btn-sm outlook-add-btn";
+        a.textContent = "+ Outlook";
+        tr.lastElementChild.appendChild(a);
+      }
       tbody.appendChild(tr);
     });
 
@@ -464,7 +513,7 @@
 
     const note = document.createElement("p");
     note.className = "schedule-note";
-    note.textContent = "This is a preview only — nothing here has been sent to Outlook or emailed to anyone. Tell Claude when you have a real project ready and it can create the actual calendar invites.";
+    note.textContent = "\"+ Outlook\" opens a prefilled event in Outlook Web on this date/time — review it and click Send/Save there; nothing goes out until you do. Attendees are only filled in where an email is already known (e.g. Aaron Rogers) — add the rest yourself.";
     scheduleBody.appendChild(note);
 
     scheduleDialog.showModal();

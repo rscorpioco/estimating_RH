@@ -298,6 +298,7 @@ const SCHEDULE_RULES = [
     time: null,
     allDay: true,
     type: "external",
+    to: ["aaron@scorpioco.com"],
     note: "To Aaron Rogers (aaron@scorpioco.com); cc Project Manager & Field Manager",
   },
   {

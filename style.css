@@ -602,3 +602,9 @@ dialog.schedule-dialog {
   color: var(--text-muted);
   margin: 14px 2px 4px;
 }
+
+.outlook-add-btn {
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-block;
+}
