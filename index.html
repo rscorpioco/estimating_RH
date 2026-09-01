@@ -43,6 +43,23 @@
   </div>
 </dialog>
 
+<dialog id="scheduleDialog" class="schedule-dialog">
+  <div class="nof-header">
+    <div>
+      <h2>Meeting &amp; Task Schedule</h2>
+      <p class="nof-sub" id="scheduleProjectName"></p>
+    </div>
+    <button type="button" class="btn" id="closeScheduleBtn" aria-label="Close">Close</button>
+  </div>
+  <div class="nof-body" id="scheduleBody"></div>
+  <div class="nof-footer">
+    <span class="nof-progress">Nothing is sent anywhere — this is a preview only.</span>
+    <div class="nof-footer-actions">
+      <button type="button" class="btn btn-primary" id="closeScheduleBtn2">Close</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="projectDialog">
   <form id="projectForm" method="dialog">
     <h2 id="projectDialogTitle">New Project</h2>
@@ -60,6 +77,9 @@
     </label>
     <label>Activate Date <span class="hint">(day 1 — deadlines are computed from this date)</span>
       <input type="date" id="fieldActivateDate" required />
+    </label>
+    <label>Subcontractor Bid Due Date <span class="hint">(optional — computes the meeting schedule)</span>
+      <input type="date" id="fieldBidDueDate" />
     </label>
     <div class="dialog-actions">
       <button type="button" class="btn" id="cancelProjectBtn">Cancel</button>

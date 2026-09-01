@@ -17,6 +17,11 @@
   const fieldDelivery = document.getElementById("fieldDelivery");
   const fieldTeamLead = document.getElementById("fieldTeamLead");
   const fieldActivateDate = document.getElementById("fieldActivateDate");
+  const fieldBidDueDate = document.getElementById("fieldBidDueDate");
+
+  const scheduleDialog = document.getElementById("scheduleDialog");
+  const scheduleProjectName = document.getElementById("scheduleProjectName");
+  const scheduleBody = document.getElementById("scheduleBody");
 
   const opportunityDialog = document.getElementById("opportunityDialog");
   const opportunityFormBody = document.getElementById("opportunityFormBody");
@@ -35,6 +40,9 @@
     document.getElementById("newProjectBtn").addEventListener("click", openNewProjectDialog);
     document.getElementById("cancelProjectBtn").addEventListener("click", () => dialog.close());
     projectForm.addEventListener("submit", handleProjectFormSubmit);
+
+    document.getElementById("closeScheduleBtn").addEventListener("click", () => scheduleDialog.close());
+    document.getElementById("closeScheduleBtn2").addEventListener("click", () => scheduleDialog.close());
 
     document.getElementById("closeOpportunityBtn").addEventListener("click", () => opportunityDialog.close());
     document.getElementById("saveOpportunityBtn").addEventListener("click", () => opportunityDialog.close());
@@ -84,6 +92,7 @@
     fieldDelivery.value = project.deliveryMethod;
     fieldTeamLead.value = project.teamLead || "";
     fieldActivateDate.value = project.activateDate;
+    fieldBidDueDate.value = project.bidDueDate || "";
     dialog.showModal();
   }
 
@@ -97,6 +106,7 @@
       project.deliveryMethod = fieldDelivery.value;
       project.teamLead = fieldTeamLead.value.trim();
       project.activateDate = fieldActivateDate.value;
+      project.bidDueDate = fieldBidDueDate.value || "";
     } else {
       const project = {
         id: "proj_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
@@ -105,6 +115,7 @@
         deliveryMethod: fieldDelivery.value,
         teamLead: fieldTeamLead.value.trim(),
         activateDate: fieldActivateDate.value,
+        bidDueDate: fieldBidDueDate.value || "",
         checked: {},
         opportunity: {},
         createdAt: new Date().toISOString(),
@@ -242,6 +253,7 @@
           <span>${escapeHtml(project.deliveryMethod)}</span>
           <span>Team Lead: <strong>${escapeHtml(project.teamLead || "—")}</strong></span>
           <span>Activated: <strong>${formatDate(new Date(project.activateDate + "T00:00:00"))}</strong></span>
+          ${project.bidDueDate ? `<span>Bid Due: <strong>${formatDate(new Date(project.bidDueDate + "T00:00:00"))}</strong></span>` : ""}
         </div>
       </div>
       <div class="header-actions">
@@ -374,7 +386,88 @@
       wrap.appendChild(renderOpportunityFormAffordance(project));
     }
 
+    if (item.id === "act-meetings") {
+      wrap.appendChild(renderScheduleAffordance(project));
+    }
+
     return wrap;
+  }
+
+  // ---------- Meeting & Task Schedule ----------
+
+  function computeSchedule(project) {
+    return SCHEDULE_RULES.map((rule) => {
+      const anchorDate = rule.anchor === "activate" ? project.activateDate : project.bidDueDate;
+      if (!anchorDate) {
+        return { rule, date: null, dateLabel: "— set a Bid Due Date to compute" };
+      }
+      const date = addDays(anchorDate, rule.offsetDays);
+      const timeLabel = rule.time
+        ? new Date("2000-01-01T" + rule.time).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+        : rule.allDay
+        ? "All day"
+        : "—";
+      return { rule, date, dateLabel: formatDate(date), timeLabel };
+    });
+  }
+
+  function renderScheduleAffordance(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "item-inline-actions";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm";
+    btn.textContent = "View Computed Meeting Schedule";
+    btn.addEventListener("click", () => openScheduleDialog(project));
+
+    const hint = document.createElement("span");
+    hint.className = "nof-progress-inline";
+    hint.textContent = project.bidDueDate ? "Bid due " + formatDate(new Date(project.bidDueDate + "T00:00:00")) : "Add a Bid Due Date to compute";
+
+    wrap.appendChild(btn);
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function openScheduleDialog(project) {
+    scheduleProjectName.textContent = `${project.name} — ${project.location}`;
+    scheduleBody.innerHTML = "";
+
+    const levelOrBid = project.deliveryMethod === "Hard Bid" ? "Bid Day" : "Level Day";
+
+    const table = document.createElement("table");
+    table.className = "schedule-table";
+    table.innerHTML = `
+      <thead>
+        <tr><th>Item</th><th>Date</th><th>Time</th><th>Type</th><th>Note</th></tr>
+      </thead>
+    `;
+    const tbody = document.createElement("tbody");
+
+    computeSchedule(project).forEach(({ rule, dateLabel, timeLabel }) => {
+      const tr = document.createElement("tr");
+      const label = rule.id === "bidLevelDay" ? rule.label.replace("Level Day / Bid Day", levelOrBid) : rule.label;
+      const typeChip = rule.type === "external" ? '<span class="type-chip external">Sends to others</span>' : '<span class="type-chip self">Self task</span>';
+      tr.innerHTML = `
+        <td>${escapeHtml(label)}</td>
+        <td class="mono-cell">${escapeHtml(dateLabel)}</td>
+        <td class="mono-cell">${escapeHtml(timeLabel || "—")}</td>
+        <td>${typeChip}</td>
+        <td class="note-cell">${escapeHtml(rule.note || "")}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    scheduleBody.appendChild(table);
+
+    const note = document.createElement("p");
+    note.className = "schedule-note";
+    note.textContent = "This is a preview only — nothing here has been sent to Outlook or emailed to anyone. Tell Claude when you have a real project ready and it can create the actual calendar invites.";
+    scheduleBody.appendChild(note);
+
+    scheduleDialog.showModal();
   }
 
   // ---------- New Opportunity Form ----------

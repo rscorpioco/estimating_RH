@@ -542,3 +542,63 @@ dialog.nof-dialog {
 @media (max-width: 640px) {
   .nof-row { grid-template-columns: 1fr; }
 }
+
+/* Meeting & Task Schedule dialog */
+
+dialog.schedule-dialog {
+  width: 820px;
+  max-width: 94vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.schedule-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border-bottom: 2px solid var(--border);
+  padding: 6px 8px;
+}
+
+.schedule-table td {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.mono-cell {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.note-cell {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.type-chip {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.type-chip.external { background: #fdf3dd; color: #b8860b; }
+.type-chip.self { background: #eef1f5; color: var(--text-muted); }
+
+.schedule-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 14px 2px 4px;
+}

@@ -267,6 +267,77 @@ const CHECKLIST_PHASES = [
 const LOCATIONS = ["Gainesville", "Tallahassee", "Orlando", "Jacksonville", "Ocala"];
 const DELIVERY_METHODS = ["CM at Risk (Interview)", "Hard Bid"];
 
+// ---------- Meeting & Task Schedule ----------
+// Timing rules for the calendar invites/tasks that have a fixed, computable date —
+// anchored to either the project's Activate Date or its Subcontractor Bid Due Date.
+// `time` is 24-hour "HH:MM" for a fixed-time event, or null for an all-day/undated task.
+const SCHEDULE_RULES = [
+  {
+    id: "kickoff",
+    label: "Calendar Invite: Complete Kick Off Mtg",
+    anchor: "activate",
+    offsetDays: 0,
+    time: "15:30",
+    type: "external",
+    note: "6S team, if needed (CD/Permit Set Only)",
+  },
+  {
+    id: "sublist",
+    label: "Log in to Procore — create & distribute the subcontractor bid list",
+    anchor: "activate",
+    offsetDays: 0,
+    time: null,
+    type: "self",
+    note: "Go to the project in Procore and build the bid list before bid documents arrive",
+  },
+  {
+    id: "schedreq",
+    label: "Calendar Invite: Schedule Request & Logistics Plan",
+    anchor: "bidDue",
+    offsetDays: -14,
+    time: null,
+    allDay: true,
+    type: "external",
+    note: "To Aaron Rogers (aaron@scorpioco.com); cc Project Manager & Field Manager",
+  },
+  {
+    id: "statusUpdate1",
+    label: "Procore status pull #1 (will bid / submitted) — email 6S team",
+    anchor: "bidDue",
+    offsetDays: -21,
+    time: null,
+    type: "self",
+    note: "Pull bid-package status from Procore; email it to whoever is invited to the Level/Bid Day invite",
+  },
+  {
+    id: "statusUpdate2",
+    label: "Procore status pull #2 (will bid / submitted) — email 6S team",
+    anchor: "bidDue",
+    offsetDays: -14,
+    time: null,
+    type: "self",
+    note: "Same as above — second pass, closer to bid due",
+  },
+  {
+    id: "lunch",
+    label: "Calendar Invite: Order Lunch for Bid Day",
+    anchor: "bidDue",
+    offsetDays: -1,
+    time: null,
+    type: "self",
+    note: "2 days before Level/Bid Day, so catering has notice",
+  },
+  {
+    id: "bidLevelDay",
+    label: "Calendar Invite: Level Day / Bid Day",
+    anchor: "bidDue",
+    offsetDays: 1,
+    time: null,
+    type: "external",
+    note: "Level Day for CMAR, Bid Day for Hard Bid — 6S team",
+  },
+];
+
 // ---------- New Opportunity Form ----------
 // Field layout, section grouping, and dropdown option lists transcribed from
 // Scorpio's "Project Tracker" workbook ("New Opportuity Form" + "New Opp Value List" tabs).
