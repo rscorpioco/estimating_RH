@@ -39,6 +39,8 @@ const CHECKLIST_PHASES = [
           { text: "Calendar Invite: Internal Deliverable Review Mtg — Final Draft ready for review; 48 hrs before due to client" },
           { text: "Calendar Invite: Architect & Client Only Deliverable Review (phone call)" },
           { text: "Calendar Invite: Client & Team Deliverable Review" },
+          { text: "Calendar Invite: Level Day or Bid Day (Level Day for CMAR, Bid Day for Hard Bid — days after subcontractor bids are due)" },
+          { text: "Calendar Invite: Order Lunch for Bid Day" },
         ],
       },
       {
