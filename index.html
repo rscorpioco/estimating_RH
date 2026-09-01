@@ -25,6 +25,24 @@
   </main>
 </div>
 
+<dialog id="opportunityDialog" class="nof-dialog">
+  <div class="nof-header">
+    <div>
+      <h2>New Opportunity Form</h2>
+      <p class="nof-sub" id="opportunityProjectName"></p>
+    </div>
+    <button type="button" class="btn" id="closeOpportunityBtn" aria-label="Close">Close</button>
+  </div>
+  <div class="nof-body" id="opportunityFormBody"></div>
+  <div class="nof-footer">
+    <span class="nof-progress" id="opportunityProgress"></span>
+    <div class="nof-footer-actions">
+      <button type="button" class="btn" id="exportOpportunityBtn">Export .xlsx</button>
+      <button type="button" class="btn btn-primary" id="saveOpportunityBtn">Save</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="projectDialog">
   <form id="projectForm" method="dialog">
     <h2 id="projectDialogTitle">New Project</h2>
@@ -50,6 +68,7 @@
   </form>
 </dialog>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="checklist-data.js"></script>
 <script src="app.js"></script>
 </body>

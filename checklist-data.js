@@ -194,3 +194,155 @@ const CHECKLIST_PHASES = [
 
 const LOCATIONS = ["Gainesville", "Tallahassee", "Orlando", "Jacksonville", "Ocala"];
 const DELIVERY_METHODS = ["CM at Risk (Interview)", "Hard Bid"];
+
+// ---------- New Opportunity Form ----------
+// Field layout, section grouping, and dropdown option lists transcribed from
+// Scorpio's "Project Tracker" workbook ("New Opportuity Form" + "New Opp Value List" tabs).
+// excelCell/excelLabelCell map each field back to the template's coordinates for export.
+
+const NOF_OFFICE_CODES = { Gainesville: "GNV", Tallahassee: "TAL", Orlando: "ORL", Jacksonville: "JAX", Ocala: "OCALA" };
+
+const NOF_STAGE_OPTIONS = [
+  "Rumor", "Prospecting", "Invitation to Bid Received", "Received RFQ/RFP", "Submitted Bid",
+  "Preparation", "Submitted RFP", "Submitted RFQ", "Shortlisted", "Interviewed",
+  "Won", "Closed-Won", "Closed-Lost", "Inactive-Did not Pursue",
+];
+
+const NOF_DELIVERY_METHOD_OPTIONS = ["Hard Bid", "CM", "Design Build", "Continuing Services Contract"];
+
+const NOF_CONTRACT_TYPE_OPTIONS = [
+  "GMP", "Bid", "Proposal", "Statement of Qualifications", "Budget & Scope", "Preliminary Estimate",
+];
+
+const NOF_YES_NO = ["Yes", "No"];
+
+const NOF_OFFICE_LOCATION_OPTIONS = ["GNV", "OCALA", "TAL", "JAX", "ORL"];
+
+const NOF_PRIMARY_CATEGORY_OPTIONS = [
+  "Athletics", "Collegiate/Student Housing", "Commercial/Private Sector", "Healthcare",
+  "Higher Education", "K-12 Education", "Local and State Government", "Mixed Use Development", "NA",
+];
+
+const NOF_SECONDARY_CATEGORY_OPTIONS = [
+  "Academic Building", "Academic Medical Building", "Airport", "Apartments", "Athletic Facility",
+  "Auditorium", "Automotive", "Biomedical", "Biotech", "Cafeteria", "Charter School", "Childcare",
+  "Church", "Classroom", "Clean Room", "Clinic", "Convention Center", "Correctional Facility",
+  "Courthouse", "Dining Facility", "Dormitory", "Elementary School", "Emergency Operations Center",
+  "Fire Station", "Food Processing", "Hangar", "Hazardous Waste", "High School", "Hospital", "Hotel",
+  "Judicial Center", "Laboratory", "Library", "Locker Room", "Manufacturing", "Medical Office Building",
+  "Middle School", "Military", "Museum", "Office Building", "Park", "Parking Lot/Garage",
+  "Police Station", "Restaurant", "Retail", "Retirement Community", "Shopping Plaza",
+  "Sorority/Fraternity", "Stadium", "Streets and Highways", "Technology Space", "Theater", "Utility",
+  "Veterinary Services", "Warehouse", "Water/Waste Water Treatment", "NA",
+];
+
+const NOF_STAFF_OPTIONS = [
+  "Aaron Rogers", "Ana Palm", "Andy Cowart", "Antonio Franzese", "April Prescott", "Bayley Main",
+  "Brandon Hochwender", "Brandon Phillips", "Casie Carlisle", "Catherine Moreira", "Chris Lewis",
+  "Chris Smith", "Christian Fernandez", "Cole Studstill", "Colleen Koeppen", "Dan McDonough",
+  "Daniel Wellhausen", "David Boe", "Dominique Wilkerson", "Don Kellogg", "Ed MacLeod", "Elma Mesic",
+  "Erik Anderson", "Erik McDonald", "Evan Scruggs", "Fletcher Teague", "Frankie Sagarese",
+  "Freddy Kussel", "Guillermo Cochrane", "Hunter Folsom", "Jason Russell", "Jaziel Ortiz",
+  "Jeff Lajza", "Jenna Hollingsworth", "Jesse Bright", "Joe Justino", "Johnathan Wilkes",
+  "Josh Phillips", "Justin Zambelli", "Keelan Gano", "Ken Brown", "Kevin Bradford", "Kyle Trexler",
+  "Lindsey Barber", "Logan Gertner", "Luis Carvajal", "Mark Winger", "Matt Layton", "Matthew Clark",
+  "Maverick Maensivu", "Michael Minotti", "Michael Ostagne", "Michael Rhodes", "Miguel Hernandez",
+  "Nate Watson", "Neil Thompson", "Nick Panzica", "Paul Shealy", "Peter Giebeig", "Rachel Hottor",
+  "Ricky Buxton", "Rob Collins", "Ryan Stroh", "Ryan Taylor", "Shayne Reynolds", "Thomas Kircher",
+  "Tracy Koller", "Trinity Hatcher", "Troy Underhill", "Tyler Hacker", "Warren Loudermilk",
+  "Will Cooley", "Zach Corda",
+];
+
+const NOF_FINANCE_CONTACTS = [
+  { region: "Gainesville - Majors", name: "Maegan Jones" },
+  { region: "Gainesville - Minors", name: "Heath Locklear" },
+  { region: "Jacksonville", name: "Mari Rivera" },
+  { region: "Orlando", name: "Shanice Spalding" },
+  { region: "Tallahassee", name: "Mari Rivera" },
+];
+
+// Row-paired field layout mirroring the template's B/C (left) and E/F (right) columns.
+// excelRow is the template row number for both the label and value cell in that pair.
+const NOF_GENERAL_ROWS = [
+  { excelRow: 4,
+    left: { id: "dateOwnerProject", label: "Date (YY-MM-DD) + Owner + Project Name", type: "text", labelCell: "B4", valueCell: "C4" },
+    right: { id: "pcPoManager", label: "PC/PO Manager", type: "select", options: NOF_STAFF_OPTIONS, labelCell: "E4", valueCell: "F4" } },
+  { excelRow: 5,
+    left: null,
+    right: { id: "formDate", label: "Date", type: "date", labelCell: "E5", valueCell: "F5" } },
+  { excelRow: 6,
+    left: { id: "stage", label: "Stage", type: "select", options: NOF_STAGE_OPTIONS, labelCell: "B6", valueCell: "C6" },
+    right: { id: "deliveryMethodNOF", label: "Delivery Method", type: "select", options: NOF_DELIVERY_METHOD_OPTIONS, labelCell: "E6", valueCell: "F6" } },
+  { excelRow: 7,
+    left: { id: "bidDate", label: "Bid Date (Expected or Actual)", type: "date", labelCell: "B7", valueCell: "C7" },
+    right: { id: "contractType", label: "Contract Type", type: "select", options: NOF_CONTRACT_TYPE_OPTIONS, labelCell: "E7", valueCell: "F7" } },
+  { excelRow: 8,
+    left: { id: "estStartDate", label: "Estimated Start Date", type: "date", labelCell: "B8", valueCell: "C8" },
+    right: { id: "bidSupplementRequired", label: "Bid Supplement Required?", type: "select", options: NOF_YES_NO, labelCell: "E8", valueCell: "F8" } },
+  { excelRow: 9,
+    left: { id: "estCompletionDate", label: "Estimated Completion Date", type: "date", labelCell: "B9", valueCell: "C9" },
+    right: { id: "buildersRiskRequired", label: "Builders Risk Standalone Required?", type: "select", options: NOF_YES_NO, labelCell: "E9", valueCell: "F9" } },
+  { excelRow: 10,
+    left: { id: "estProjectValue", label: "Estimated Project Value", type: "currency", labelCell: "B10", valueCell: "C10" },
+    right: { id: "bidBondRequired", label: "Bid Bond Required?", type: "select", options: NOF_YES_NO, labelCell: "E10", valueCell: "F10" } },
+  { excelRow: 11,
+    left: { id: "projectSqFt", label: "Project Square Footage", type: "number", labelCell: "B11", valueCell: "C11" },
+    right: { id: "primaryCategory", label: "Primary Category", type: "select", options: NOF_PRIMARY_CATEGORY_OPTIONS, labelCell: "E11", valueCell: "F11" } },
+  { excelRow: 12,
+    left: { id: "jobsiteAddress", label: "Jobsite Address", type: "text", labelCell: "B12", valueCell: "C12" },
+    right: { id: "secondaryCategory", label: "Secondary Category", type: "select", options: NOF_SECONDARY_CATEGORY_OPTIONS, labelCell: "E12", valueCell: "F12" } },
+  { excelRow: 13,
+    left: { id: "jobsiteCityStateZip", label: "Jobsite City, State ZIP", type: "text", labelCell: "B13", valueCell: "C13" },
+    right: { id: "officeLocation", label: "Office Location", type: "select", options: NOF_OFFICE_LOCATION_OPTIONS, labelCell: "E13", valueCell: "F13" } },
+];
+
+const NOF_OWNER_AEC_ROWS = [
+  { excelRow: 15,
+    left: { id: "ownerCompany", label: "Company", type: "text", labelCell: "B15", valueCell: "C15" },
+    right: { id: "architectCo", label: "Architect (Company)", type: "text", labelCell: "E15", valueCell: "F15" } },
+  { excelRow: 16,
+    left: { id: "ownerContactName", label: "Name", type: "text", labelCell: "B16", valueCell: "C16" },
+    right: { id: "architectContactName", label: "Name", type: "text", labelCell: "E16", valueCell: "F16" } },
+  { excelRow: 17,
+    left: { id: "ownerAddress", label: "Address", type: "text", labelCell: "B17", valueCell: "C17" },
+    right: { id: "architectAddress", label: "Address", type: "text", labelCell: "E17", valueCell: "F17" } },
+  { excelRow: 18,
+    left: { id: "ownerCityStateZip", label: "City, State ZIP", type: "text", labelCell: "B18", valueCell: "C18" },
+    right: { id: "architectCityStateZip", label: "City, State ZIP", type: "text", labelCell: "E18", valueCell: "F18" } },
+  { excelRow: 19,
+    left: { id: "ownerPhone", label: "Phone", type: "text", labelCell: "B19", valueCell: "C19" },
+    right: { id: "architectPhone", label: "Phone", type: "text", labelCell: "E19", valueCell: "F19" } },
+  { excelRow: 20,
+    left: { id: "ownerEmail", label: "Email", type: "text", labelCell: "B20", valueCell: "C20" },
+    right: { id: "architectEmail", label: "Email", type: "text", labelCell: "E20", valueCell: "F20" } },
+  { excelRow: 21,
+    left: { id: "ownersRepName", label: "Owner's Rep. Name", type: "text", labelCell: "B21", valueCell: "C21" },
+    right: { id: "civilEngineerCo", label: "Civil Engineer Co.", type: "text", labelCell: "E21", valueCell: "F21" } },
+  { excelRow: 22,
+    left: { id: "ownersRepPhone", label: "Owner's Rep. Phone", type: "text", labelCell: "B22", valueCell: "C22" },
+    right: { id: "civilEngineerName", label: "Name of Civil Engineer", type: "text", labelCell: "E22", valueCell: "F22" } },
+  { excelRow: 23,
+    left: { id: "ownersRepEmail", label: "Owner's Rep. Email", type: "text", labelCell: "B23", valueCell: "C23" },
+    right: { id: "structuralEngineerCo", label: "Structural Engineer Co.", type: "text", labelCell: "E23", valueCell: "F23" } },
+  { excelRow: 24,
+    left: { id: "renderingsExist", label: "Do Renderings or Elevations Exist?", type: "select", options: NOF_YES_NO, labelCell: "B24", valueCell: "C24" },
+    right: { id: "structuralEngineerName", label: "Name of Structural Engineer", type: "text", labelCell: "E24", valueCell: "F24" } },
+  { excelRow: 25,
+    left: { id: "specialtyConsultant", label: "Specialty Consultant", type: "select", options: NOF_YES_NO, labelCell: "B25", valueCell: "C25" },
+    right: { id: "mepfpEngineerCo", label: "MEPFP Engineer Co.", type: "text", labelCell: "E25", valueCell: "F25" } },
+  { excelRow: 26,
+    left: { id: "specialtyConsultantName", label: "Name of Specialty Consultant", type: "text", labelCell: "B26", valueCell: "C26" },
+    right: { id: "mepfpEngineerName", label: "Name of MEPFP Engineer", type: "text", labelCell: "E26", valueCell: "F26" } },
+  { excelRow: 27,
+    left: { id: "landscapeArchitectCo", label: "Landscape Architect Co.", type: "text", labelCell: "B27", valueCell: "C27" },
+    right: { id: "landscapeArchitectName", label: "Name of Landscape Architect", type: "text", labelCell: "E27", valueCell: "F27" } },
+];
+
+const NOF_DESCRIPTION_FIELD = { id: "description", label: "Opportunity Description & Notes", type: "textarea", labelCell: "B28", valueCell: "B29" };
+
+// Flat list of every field, used to compute completion counts.
+const NOF_ALL_FIELDS = [
+  ...NOF_GENERAL_ROWS.flatMap((r) => [r.left, r.right].filter(Boolean)),
+  ...NOF_OWNER_AEC_ROWS.flatMap((r) => [r.left, r.right].filter(Boolean)),
+  NOF_DESCRIPTION_FIELD,
+];

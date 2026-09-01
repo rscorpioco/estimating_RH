@@ -373,3 +373,130 @@ dialog::backdrop { background: rgba(15, 42, 74, 0.45); }
   gap: 8px;
   margin-top: 8px;
 }
+
+/* New Opportunity Form dialog */
+
+.item-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.btn-sm {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.nof-progress-inline {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+dialog.nof-dialog {
+  width: 760px;
+  max-width: 94vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.nof-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.nof-header h2 {
+  margin: 0 0 2px 0;
+  font-size: 17px;
+  color: var(--navy);
+}
+
+.nof-sub {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.nof-body {
+  overflow-y: auto;
+  padding: 16px 22px;
+  flex: 1;
+}
+
+.nof-section-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--navy);
+  padding: 6px 10px;
+  border-radius: 5px;
+  margin: 18px 0 10px 0;
+}
+
+.nof-section-title:first-child { margin-top: 0; }
+
+.nof-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.nof-field label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.nof-field input,
+.nof-field select,
+.nof-field textarea {
+  font-family: inherit;
+  font-size: 13.5px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: #fff;
+}
+
+.nof-field textarea {
+  resize: vertical;
+  min-height: 70px;
+}
+
+.nof-field.empty { visibility: hidden; }
+
+.nof-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 22px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.nof-progress {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.nof-footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .nof-row { grid-template-columns: 1fr; }
+}
