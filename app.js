@@ -253,6 +253,11 @@
     header.querySelector("#editProjectBtn").addEventListener("click", () => openEditProjectDialog(project));
     header.querySelector("#deleteProjectBtn").addEventListener("click", () => deleteProject(project.id));
 
+    const dayZeroEl = document.createElement("div");
+    dayZeroEl.className = "day-zero-banner";
+    dayZeroEl.innerHTML = `<strong>${escapeHtml(DAY_ZERO_LABEL.split(" — ")[0])}</strong> — ${escapeHtml(DAY_ZERO_LABEL.split(" — ")[1])}: ${escapeHtml(formatDate(new Date(project.activateDate + "T00:00:00")))}`;
+    projectDetailEl.appendChild(dayZeroEl);
+
     const overallEl = document.createElement("div");
     overallEl.className = "overall-progress";
     overallEl.innerHTML = `
@@ -284,7 +289,11 @@
     headerEl.className = "phase-header";
     headerEl.innerHTML = `
       <div class="phase-header-left">
-        <span class="phase-title">${escapeHtml(phase.name)}</span>
+        <span class="phase-day-chip">${escapeHtml(phase.deadlineLabel)}</span>
+        <div>
+          <div class="phase-title">${escapeHtml(phase.name)}</div>
+          ${phase.activity ? `<div class="phase-activity">${escapeHtml(phase.activity)}</div>` : ""}
+        </div>
         <span class="phase-due ${status.cls}">${escapeHtml(status.label)}</span>
       </div>
       <div>
@@ -303,7 +312,15 @@
     bodyEl.className = "phase-body";
     bodyEl.hidden = !isExpanded;
 
+    let lastGroup = undefined;
     phase.items.forEach((item) => {
+      if (item.group && item.group !== lastGroup) {
+        const groupEl = document.createElement("div");
+        groupEl.className = "item-group-header";
+        groupEl.textContent = item.group;
+        bodyEl.appendChild(groupEl);
+      }
+      lastGroup = item.group;
       bodyEl.appendChild(renderItem(project, item, checked));
     });
 

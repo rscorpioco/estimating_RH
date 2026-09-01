@@ -2,44 +2,110 @@
 // Transcribed from Scorpio Corporation's preconstruction workflow.
 // `dueOffsetDays` is used to compute a target date from the project's Activate date.
 
+// Day 0 is the trigger event itself (deliverable package received / kickoff) —
+// it isn't a checklist phase, just the reference point every phase's day count is measured from.
+const DAY_ZERO_LABEL = "Day 0 — Receipt of Deliverable Package / Kickoff Meeting";
+
 const CHECKLIST_PHASES = [
   {
     id: "activate",
     name: "Activate",
-    deadlineLabel: "Within 48 hours",
-    dueOffsetDays: 2,
+    deadlineLabel: "Day 1",
+    activity: "PC Project Activation · DDI · 6S Process · Beyond Estimating",
+    dueOffsetDays: 1,
     items: [
-      { id: "act-1", text: "Complete new opportunity form (if this is the first deliverable)" },
-      { id: "act-2", text: "Create efficiencies in bid documents through Bluebeam" },
-      { id: "act-3", text: "Update documents, plans, and specifications tabs in Procore" },
-      { id: "act-4", text: "Create the project in takeoff software" },
+      // "Do First" — these are external-facing commitments (meetings, subs, 6S team) that have their
+      // own lead time, so they go out before bid documents are even in hand, not after.
+      {
+        id: "act-meetings",
+        group: "Do First — Before Bid Documents Arrive",
+        text: "Schedule all required deliverable review meetings",
+        sub: [
+          { text: "Calendar Invite: Complete Kick Off Mtg (CD/Permit Set Only; if 6S team is needed)" },
+          { text: "Calendar Invite: Site Visit, if needed" },
+          { text: "Calendar Invite: Share Bid List to Team" },
+          { text: "Calendar Invite: Constructability Review with Field Manager Team Leaders and Operations Team Leaders" },
+          {
+            text: "Calendar Invite: Schedule Request & Logistics Plan — Aaron Rogers",
+            link: "mailto:aaron@scorpioco.com",
+            sub: [{ text: "cc: Project Manager and Field Manager" }],
+          },
+          { text: "Calendar Invite: Page Turn" },
+          { text: "Calendar Invite: RFI Log #1 Submitted" },
+          { text: "Calendar Invite: Discovery Status Update (subcontractor coverage, scope, etc.)" },
+          { text: "Calendar Invite: First-Pass Estimate & General Staffing/Conditions/Requirements Complete and Issued (a week and a day before due to client)" },
+          { text: "Calendar Invite: Staff & GC Review — Final Draft ready for review; 48 hrs before due to client" },
+          { text: "Calendar Invite: Precon Internal Deliverable Review Mtg — Final Draft ready for review; 24–48 hrs before Internal" },
+          { text: "Calendar Invite: Internal Deliverable Review Mtg — Final Draft ready for review; 48 hrs before due to client" },
+          { text: "Calendar Invite: Architect & Client Only Deliverable Review (phone call)" },
+          { text: "Calendar Invite: Client & Team Deliverable Review" },
+        ],
+      },
+      {
+        id: "act-sublist",
+        group: "Do First — Before Bid Documents Arrive",
+        text: "Create and distribute the subcontractor list",
+        sub: [
+          { text: "Build the trade partner list and review it with the assigned project operations and field operations team members" },
+          { text: "Distribute the list to the team (see the Share Bid List calendar invite above)" },
+        ],
+      },
+      {
+        id: "act-6s",
+        group: "Do First — Before Bid Documents Arrive",
+        text: "Distribute the 6S assignments and obtain approval",
+        sub: [{ text: "Confirm all 6S Team Members are included on the project in Procore" }],
+      },
+      {
+        id: "act-staffgc",
+        group: "Do First — Before Bid Documents Arrive",
+        text: "Create staffing and General Conditions (GCs)",
+      },
+      // Everything below depends on actually having the bid documents in hand.
+      {
+        id: "act-1",
+        group: "Once Bid Documents Are Received",
+        text: "Complete new opportunity form (if this is the first deliverable)",
+      },
+      {
+        id: "act-2",
+        group: "Once Bid Documents Are Received",
+        text: "Create efficiencies in bid documents through Bluebeam",
+      },
+      {
+        id: "act-3",
+        group: "Once Bid Documents Are Received",
+        text: "Update documents, plans, and specifications tabs in Procore",
+      },
+      {
+        id: "act-4",
+        group: "Once Bid Documents Are Received",
+        text: "Create the project in takeoff software",
+      },
       {
         id: "act-5",
+        group: "Once Bid Documents Are Received",
         text: "Create the estimate in estimating software",
         sub: [
           { text: "Create estimate sorts in estimating software that match the owner's requirements" },
           { text: "Double-check totals page items are calculating off the correct total. Confirm if the owner has requirements" },
         ],
       },
-      { id: "act-6", text: "Send documents to project operations and field operations for document review, constructability review, schedule, and site utilization" },
       {
-        id: "act-7",
-        text: "Send out calendar invites",
-        sub: [
-          { text: "6S Team: kickoff meeting, sub-participation check-in, leveling day" },
-          { text: "PC Team: PC Review, Details Review, Deliverable Review with the owner" },
-        ],
+        id: "act-6",
+        group: "Once Bid Documents Are Received",
+        text: "Send documents to project operations and field operations for document review, constructability review, schedule, and site utilization",
       },
-      { id: "act-8", text: "Confirm all 6S Team Members are included on the project in Procore" },
       {
-        id: "act-9",
-        text: "Send out invitations to bid",
+        id: "act-advertise",
+        group: "Once Bid Documents Are Received",
+        text: "Advertise and formally invite bid",
         sub: [
-          { text: "Create a trade partner list and review with the assigned project operations and field operations team members prior to bid advertisement" },
           {
             text: "Advertisement requirements",
             sub: [
               { text: "Post in local newspapers and/or websites per the owner requirements" },
+              { text: "For GMP delivery, the ad must run at least 30 days before the bid due date — confirm the date against the Milestone Schedule" },
               { text: "For UF projects, complete the Subcontractor Opportunity Form", link: "https://sbr.admin.ufl.edu/suppliers/subcontractor-opportunity-form/" },
               { text: "Upload sample subcontracts" },
             ],
@@ -51,8 +117,9 @@ const CHECKLIST_PHASES = [
   {
     id: "discovery",
     name: "Discovery",
-    deadlineLabel: "By End of 1st Week",
-    dueOffsetDays: 7,
+    deadlineLabel: "Day 3–5",
+    activity: "DDI · Know the Job",
+    dueOffsetDays: 5,
     items: [
       { id: "dis-1", text: "Have kickoff meeting. Placemat and leveling assignments complete" },
       {
@@ -74,8 +141,9 @@ const CHECKLIST_PHASES = [
   {
     id: "development",
     name: "Development",
-    deadlineLabel: "By End of 2nd Week",
-    dueOffsetDays: 14,
+    deadlineLabel: "Day 8–10",
+    activity: "DDI · Estimating · Scope Writing · Beyond Estimating",
+    dueOffsetDays: 10,
     items: [
       { id: "dev-1", text: "Complete RFI log and receive back responses" },
       { id: "dev-2", text: "Complete takeoffs and populate Destini estimate. Complete internal estimate (starts in Discovery, completed in Development)" },
@@ -153,8 +221,9 @@ const CHECKLIST_PHASES = [
   {
     id: "details",
     name: "Details",
-    deadlineLabel: "By End of 3rd Week",
-    dueOffsetDays: 21,
+    deadlineLabel: "Day 12–15",
+    activity: "DDI · Value Analysis · Bid Day Requirements",
+    dueOffsetDays: 15,
     items: [
       { id: "det-1", text: "Compile the leveling sheets" },
       { id: "det-2", text: "Update the Bid Risk Calculator" },
@@ -166,8 +235,9 @@ const CHECKLIST_PHASES = [
   {
     id: "done",
     name: "Done",
-    deadlineLabel: "By End of 4th Week",
-    dueOffsetDays: 28,
+    deadlineLabel: "Day 15–25",
+    activity: "6S Process · Client Deliverable · PC Closeout",
+    dueOffsetDays: 25,
     items: [
       { id: "done-1", text: "Make final edits to deliverable based on the details review meeting" },
       { id: "done-2", text: "Print and bind deliverable for the review meeting" },

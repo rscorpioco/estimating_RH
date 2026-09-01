@@ -140,6 +140,48 @@ body {
   gap: 8px;
 }
 
+.day-zero-banner {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  background: #eef1f5;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.day-zero-banner strong { color: var(--navy); }
+
+.phase-day-chip {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--navy-light);
+  border-radius: 4px;
+  padding: 3px 7px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.phase-activity {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.item-group-header {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+  padding: 10px 0 4px 0;
+  margin-top: 4px;
+}
+
+.item-group-header:first-child { margin-top: 0; }
+
 .overall-progress {
   background: var(--card-bg);
   border: 1px solid var(--border);
