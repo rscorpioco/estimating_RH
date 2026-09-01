@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Scorpio Preconstruction — CM Project Startup Tracker</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h1>Scorpio Preconstruction</h1>
+      <p class="subtitle">CM Project Startup Tracker</p>
+    </div>
+    <button id="newProjectBtn" class="btn btn-primary btn-block">+ New Project</button>
+    <div id="projectList" class="project-list"></div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="empty-state" id="emptyState">
+      <p>Select a project or create a new one to get started.</p>
+    </div>
+    <div class="project-detail" id="projectDetail" hidden></div>
+  </main>
+</div>
+
+<dialog id="projectDialog">
+  <form id="projectForm" method="dialog">
+    <h2 id="projectDialogTitle">New Project</h2>
+    <label>Project Name
+      <input type="text" id="fieldName" required placeholder="e.g. UF Chemistry Building Renovation" />
+    </label>
+    <label>Location
+      <select id="fieldLocation"></select>
+    </label>
+    <label>Delivery Method
+      <select id="fieldDelivery"></select>
+    </label>
+    <label>Team Lead
+      <input type="text" id="fieldTeamLead" placeholder="e.g. Kevin Bradford" />
+    </label>
+    <label>Activate Date <span class="hint">(day 1 — deadlines are computed from this date)</span>
+      <input type="date" id="fieldActivateDate" required />
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="btn" id="cancelProjectBtn">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="saveProjectBtn">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="checklist-data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

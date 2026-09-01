@@ -1,0 +1,375 @@
+:root {
+  --navy: #0f2a4a;
+  --navy-light: #1c4470;
+  --accent: #c8a24a;
+  --bg: #f5f6f8;
+  --card-bg: #ffffff;
+  --border: #dde1e7;
+  --text: #1f2733;
+  --text-muted: #667085;
+  --green: #1f8a4c;
+  --red: #c0392b;
+  --amber: #b8860b;
+  --radius: 8px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  background: var(--navy);
+  color: #fff;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sidebar-header h1 {
+  font-size: 18px;
+  margin: 0 0 2px 0;
+  letter-spacing: 0.02em;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 12.5px;
+  color: #b7c4d6;
+}
+
+.project-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.project-card {
+  background: var(--navy-light);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: border-color 0.15s;
+}
+
+.project-card:hover { border-color: var(--accent); }
+.project-card.active { border-color: var(--accent); background: #234f80; }
+
+.project-card .pname {
+  font-weight: 600;
+  font-size: 13.5px;
+  margin-bottom: 4px;
+}
+
+.project-card .pmeta {
+  font-size: 11.5px;
+  color: #b7c4d6;
+  display: flex;
+  justify-content: space-between;
+}
+
+.project-card .pprogress {
+  margin-top: 6px;
+  height: 5px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.project-card .pprogress-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+/* Main */
+.main {
+  flex: 1;
+  padding: 28px 36px;
+  overflow-y: auto;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin-top: 60px;
+  text-align: center;
+}
+
+.project-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.project-detail-header h2 {
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  color: var(--navy);
+}
+
+.project-meta-line {
+  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.project-meta-line span strong { color: var(--text); }
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.overall-progress {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  margin-bottom: 22px;
+}
+
+.overall-progress-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+}
+
+.overall-progress-bar {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.overall-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--navy-light), var(--accent));
+}
+
+.phase {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.phase-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  cursor: pointer;
+  background: #fafbfc;
+  border-bottom: 1px solid var(--border);
+}
+
+.phase-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.phase-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--navy);
+}
+
+.phase-due {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #eef1f5;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.phase-due.overdue { background: #fbeae8; color: var(--red); }
+.phase-due.due-soon { background: #fdf3dd; color: var(--amber); }
+.phase-due.complete { background: #e8f6ee; color: var(--green); }
+
+.phase-count {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.phase-toggle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+
+.phase-body {
+  padding: 6px 18px 14px 18px;
+}
+
+.phase-body[hidden] { display: none; }
+
+.checklist-item {
+  border-bottom: 1px dashed var(--border);
+  padding: 10px 0;
+}
+
+.checklist-item:last-child { border-bottom: none; }
+
+.item-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.item-row input[type="checkbox"] {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--navy);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.item-row label {
+  font-size: 14px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.item-row label.checked {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.item-link {
+  color: var(--navy-light);
+  font-size: 12.5px;
+  margin-left: 4px;
+}
+
+.sub-list {
+  margin: 6px 0 0 26px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sub-list li {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  position: relative;
+  padding-left: 12px;
+}
+
+.sub-list li::before {
+  content: "–";
+  position: absolute;
+  left: 0;
+}
+
+.sub-list .sub-list {
+  margin-top: 4px;
+  margin-left: 16px;
+}
+
+.sub-list a { color: var(--navy-light); }
+
+/* Buttons */
+.btn {
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btn:hover { background: #f2f3f5; }
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #1f2733;
+  font-weight: 600;
+}
+
+.btn-primary:hover { background: #b6913c; }
+
+.btn-block { width: 100%; }
+
+.btn-danger { color: var(--red); }
+
+/* Dialog */
+dialog {
+  border: none;
+  border-radius: var(--radius);
+  padding: 0;
+  width: 420px;
+  max-width: 92vw;
+}
+
+dialog::backdrop { background: rgba(15, 42, 74, 0.45); }
+
+#projectForm {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#projectForm h2 {
+  margin: 0 0 6px 0;
+  font-size: 17px;
+  color: var(--navy);
+}
+
+#projectForm label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+#projectForm .hint { font-weight: 400; }
+
+#projectForm input,
+#projectForm select {
+  font-size: 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: inherit;
+  color: var(--text);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
