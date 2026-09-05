@@ -52,6 +52,18 @@
   const kickoffPdfDocs = new Map();
   let kickoffZoomState = { projectId: null, pageIndex: 0 };
 
+  // Fields whose values already live elsewhere in the app (the project record). They stay
+  // "linked" — recomputed fresh every time the form opens — until the user types into them
+  // here, at which point their override wins and the link is dropped for that field.
+  // Must be declared before init() runs: rendering an already-active project on page load
+  // calls into this synchronously, before the script would otherwise reach this line.
+  const NOF_LINKED_FIELDS = {
+    officeLocation: (project) => NOF_OFFICE_CODES[project.location] || "",
+    deliveryMethodNOF: (project) => (project.deliveryMethod === "Hard Bid" ? "Hard Bid" : project.deliveryMethod ? "CM" : ""),
+    pcPoManager: (project) => (NOF_STAFF_OPTIONS.includes(project.teamLead) ? project.teamLead : ""),
+    bidDate: (project) => project.bidDueDate || "",
+  };
+
   init();
 
   // All dialogs are native <dialog> elements shown via showModal(), which does NOT close
@@ -1041,16 +1053,6 @@
   }
 
   // ---------- New Opportunity Form ----------
-
-  // Fields whose values already live elsewhere in the app (the project record). They stay
-  // "linked" — recomputed fresh every time the form opens — until the user types into them
-  // here, at which point their override wins and the link is dropped for that field.
-  const NOF_LINKED_FIELDS = {
-    officeLocation: (project) => NOF_OFFICE_CODES[project.location] || "",
-    deliveryMethodNOF: (project) => (project.deliveryMethod === "Hard Bid" ? "Hard Bid" : project.deliveryMethod ? "CM" : ""),
-    pcPoManager: (project) => (NOF_STAFF_OPTIONS.includes(project.teamLead) ? project.teamLead : ""),
-    bidDate: (project) => project.bidDueDate || "",
-  };
 
   function countOpportunityFieldsFilled(project) {
     const data = project.opportunity || {};
