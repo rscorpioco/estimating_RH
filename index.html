@@ -60,6 +60,23 @@
   </div>
 </dialog>
 
+<dialog id="kickoffDialog" class="nof-dialog">
+  <div class="nof-header">
+    <div>
+      <h2 id="kickoffDialogTitle">Kickoff / Bid Day Package</h2>
+      <p class="nof-sub" id="kickoffProjectName"></p>
+    </div>
+    <button type="button" class="btn" id="closeKickoffBtn" aria-label="Close">Close</button>
+  </div>
+  <div class="nof-body" id="kickoffBody"></div>
+  <div class="nof-footer">
+    <span class="nof-progress" id="kickoffProgress"></span>
+    <div class="nof-footer-actions">
+      <button type="button" class="btn btn-primary" id="exportKickoffBtn">Export Package (.pdf)</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="projectDialog">
   <form id="projectForm" method="dialog">
     <h2 id="projectDialogTitle">New Project</h2>
@@ -89,6 +106,7 @@
 </dialog>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="checklist-data.js"></script>
 <script src="app.js"></script>
 </body>

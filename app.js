@@ -28,8 +28,18 @@
   const opportunityProjectName = document.getElementById("opportunityProjectName");
   const opportunityProgress = document.getElementById("opportunityProgress");
 
+  const kickoffDialog = document.getElementById("kickoffDialog");
+  const kickoffDialogTitle = document.getElementById("kickoffDialogTitle");
+  const kickoffProjectName = document.getElementById("kickoffProjectName");
+  const kickoffBody = document.getElementById("kickoffBody");
+  const kickoffProgress = document.getElementById("kickoffProgress");
+
   let editingProjectId = null;
   let opportunityProjectId = null;
+  let kickoffProjectId = null;
+  // Attached drawing files are held in memory only (not persisted to localStorage — they
+  // can be many MB each) keyed by "<projectId>:<sectionName>". Re-attach after a reload.
+  const kickoffFiles = new Map();
 
   init();
 
@@ -45,6 +55,13 @@
 
     document.getElementById("closeScheduleBtn").addEventListener("click", () => scheduleDialog.close());
     document.getElementById("closeScheduleBtn2").addEventListener("click", () => scheduleDialog.close());
+
+    document.getElementById("closeKickoffBtn").addEventListener("click", () => kickoffDialog.close());
+    document.getElementById("exportKickoffBtn").addEventListener("click", handleExportKickoff);
+    kickoffDialog.addEventListener("close", () => {
+      renderProjectList();
+      renderActiveProject();
+    });
 
     document.getElementById("closeOpportunityBtn").addEventListener("click", () => opportunityDialog.close());
     document.getElementById("saveOpportunityBtn").addEventListener("click", () => opportunityDialog.close());
@@ -404,6 +421,10 @@
       wrap.appendChild(renderOpportunityFormAffordance(project));
     }
 
+    if (item.id === "act-kickoff") {
+      wrap.appendChild(renderKickoffAffordance(project));
+    }
+
     return wrap;
   }
 
@@ -531,6 +552,284 @@
     scheduleBody.appendChild(note);
 
     scheduleDialog.showModal();
+  }
+
+  // ---------- Kickoff / Bid Day Package ----------
+
+  function kickoffFileKey(project, section) {
+    return project.id + ":" + section;
+  }
+
+  function countKickoffProgress(project) {
+    const data = project.kickoffPackage || {};
+    const fieldsFilled = KICKOFF_FIELDS.filter((f) => {
+      const v = data[f.id];
+      return v !== undefined && v !== null && String(v).trim() !== "";
+    }).length;
+    const filesAttached = KICKOFF_PACKAGE_SECTIONS.filter((s) => kickoffFiles.has(kickoffFileKey(project, s))).length;
+    return { fieldsFilled, fieldsTotal: KICKOFF_FIELDS.length, filesAttached, filesTotal: KICKOFF_PACKAGE_SECTIONS.length };
+  }
+
+  function renderKickoffAffordance(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "item-inline-actions";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm";
+    btn.textContent = "Build Kickoff / Bid Day Package";
+    btn.addEventListener("click", () => openKickoffDialog(project));
+
+    const { fieldsFilled, fieldsTotal, filesAttached, filesTotal } = countKickoffProgress(project);
+    const hint = document.createElement("span");
+    hint.className = "nof-progress-inline";
+    hint.textContent = `${fieldsFilled}/${fieldsTotal} fields, ${filesAttached}/${filesTotal} drawings attached`;
+
+    wrap.appendChild(btn);
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function openKickoffDialog(project) {
+    kickoffProjectId = project.id;
+    project.kickoffPackage = project.kickoffPackage || {};
+    const levelOrBid = project.deliveryMethod === "Hard Bid" ? "Bid Day" : "Level Day";
+    kickoffDialogTitle.textContent = levelOrBid + " Package";
+    kickoffProjectName.textContent = `${project.name} — ${project.location}`;
+    renderKickoffBody(project);
+    updateKickoffProgressLabel(project);
+    kickoffDialog.showModal();
+  }
+
+  function updateKickoffProgressLabel(project) {
+    const { fieldsFilled, fieldsTotal, filesAttached, filesTotal } = countKickoffProgress(project);
+    kickoffProgress.textContent = `${fieldsFilled}/${fieldsTotal} fields filled — ${filesAttached}/${filesTotal} drawings attached (attachments aren't saved between visits)`;
+  }
+
+  function renderKickoffBody(project) {
+    kickoffBody.innerHTML = "";
+
+    const drawingsTitle = document.createElement("div");
+    drawingsTitle.className = "nof-section-title";
+    drawingsTitle.textContent = "Drawings";
+    kickoffBody.appendChild(drawingsTitle);
+    KICKOFF_PACKAGE_SECTIONS.forEach((section) => {
+      kickoffBody.appendChild(renderKickoffUploadRow(project, section));
+    });
+
+    const infoTitle = document.createElement("div");
+    infoTitle.className = "nof-section-title";
+    infoTitle.textContent = "Package Information";
+    kickoffBody.appendChild(infoTitle);
+
+    for (let i = 0; i < KICKOFF_FIELDS.length; i += 2) {
+      const row = document.createElement("div");
+      row.className = "nof-row";
+      row.appendChild(renderKickoffField(project, KICKOFF_FIELDS[i]));
+      row.appendChild(KICKOFF_FIELDS[i + 1] ? renderKickoffField(project, KICKOFF_FIELDS[i + 1]) : emptyOpportunityField());
+      kickoffBody.appendChild(row);
+    }
+  }
+
+  function renderKickoffUploadRow(project, section) {
+    const key = kickoffFileKey(project, section);
+    const existing = kickoffFiles.get(key);
+
+    const row = document.createElement("div");
+    row.className = "kickoff-upload-row";
+
+    const label = document.createElement("span");
+    label.className = "kickoff-upload-label";
+    label.textContent = section;
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/pdf";
+    input.id = "kickoff_file_" + section.replace(/\s+/g, "_");
+
+    const status = document.createElement("span");
+    status.className = "kickoff-upload-status";
+    status.textContent = existing ? existing.name : "No file attached";
+
+    input.addEventListener("change", () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      kickoffFiles.set(key, file);
+      status.textContent = file.name;
+      updateKickoffProgressLabel(project);
+      renderProjectList();
+    });
+
+    row.appendChild(label);
+    row.appendChild(input);
+    row.appendChild(status);
+    return row;
+  }
+
+  function renderKickoffField(project, field) {
+    const data = project.kickoffPackage || (project.kickoffPackage = {});
+    const wrap = document.createElement("div");
+    wrap.className = "nof-field";
+
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    labelText.textContent = field.label;
+    label.appendChild(labelText);
+
+    const input = document.createElement(field.type === "textarea" ? "textarea" : "input");
+    if (field.type !== "textarea") input.type = field.type;
+    input.value = data[field.id] || "";
+    input.id = "kickoff_" + field.id;
+    input.addEventListener("input", () => {
+      data[field.id] = input.value;
+      saveState();
+      updateKickoffProgressLabel(project);
+    });
+
+    label.appendChild(input);
+    wrap.appendChild(label);
+    return wrap;
+  }
+
+  function wrapPdfText(text, font, size, maxWidth) {
+    const words = String(text || "").split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = "";
+    words.forEach((word) => {
+      const trial = line ? line + " " + word : word;
+      if (font.widthOfTextAtSize(trial, size) > maxWidth && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = trial;
+      }
+    });
+    if (line) lines.push(line);
+    return lines;
+  }
+
+  async function handleExportKickoff() {
+    const project = state.projects.find((p) => p.id === kickoffProjectId);
+    if (!project) return;
+
+    if (typeof PDFLib === "undefined") {
+      alert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
+      return;
+    }
+
+    const exportBtn = document.getElementById("exportKickoffBtn");
+    const originalLabel = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = "Building…";
+
+    try {
+      const bytes = await buildKickoffPackagePdf(project);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${sanitizeFilename(project.name)}_Kickoff_Package.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (err) {
+      alert("Couldn't build the package: " + (err && err.message ? err.message : err));
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = originalLabel;
+    }
+  }
+
+  async function buildKickoffPackagePdf(project) {
+    const { PDFDocument, StandardFonts, rgb } = PDFLib;
+    const data = project.kickoffPackage || {};
+    const levelOrBid = project.deliveryMethod === "Hard Bid" ? "BID DAY" : "LEVEL DAY";
+
+    const outDoc = await PDFDocument.create();
+    const font = await outDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await outDoc.embedFont(StandardFonts.HelveticaBold);
+
+    const page = outDoc.addPage([612, 792]);
+    const marginX = 50;
+    let y = 740;
+
+    function heading(text, size) {
+      page.drawText(text, { x: marginX, y, size, font: boldFont, color: rgb(0.05, 0.05, 0.05) });
+      y -= size + 10;
+    }
+
+    function fieldLine(label, value) {
+      page.drawText(label, { x: marginX, y, size: 10, font: boldFont, color: rgb(0.15, 0.15, 0.15) });
+      page.drawText(String(value || "—"), { x: marginX + 190, y, size: 10, font, color: rgb(0.15, 0.15, 0.15) });
+      y -= 18;
+    }
+
+    function wrappedBlock(label, value) {
+      page.drawText(label, { x: marginX, y, size: 10, font: boldFont, color: rgb(0.15, 0.15, 0.15) });
+      y -= 14;
+      const lines = wrapPdfText(value || "—", font, 10, 500);
+      lines.forEach((line) => {
+        page.drawText(line, { x: marginX + 10, y, size: 10, font, color: rgb(0.15, 0.15, 0.15) });
+        y -= 14;
+      });
+      y -= 4;
+    }
+
+    const bidDayDateLabel = data.bidDayDate ? formatDate(new Date(data.bidDayDate + "T00:00:00")) : "—";
+    const bidDayTimeLabel = data.bidDayTime ? formatTimeHHMM(data.bidDayTime) : "";
+    heading(`${levelOrBid} | ${bidDayDateLabel}${bidDayTimeLabel ? " at " + bidDayTimeLabel : ""}`, 18);
+    heading(project.name, 13);
+    heading(data.projectAddress || "—", 11);
+    y -= 6;
+
+    fieldLine("RFIs due by:", data.rfiDueBy ? formatDate(new Date(data.rfiDueBy + "T00:00:00")) : "—");
+    const subBidsDue = data.subBidsDueDate
+      ? formatDate(new Date(data.subBidsDueDate + "T00:00:00")) + (data.subBidsDueTime ? " at " + formatTimeHHMM(data.subBidsDueTime) : "")
+      : "—";
+    fieldLine("Sub Bids are due:", subBidsDue);
+    y -= 10;
+
+    heading("Project Requirements for Subcontractors", 12);
+    fieldLine("Bids must be good for:", data.bidsGoodForDays ? data.bidsGoodForDays + " days" : "—");
+    fieldLine("Schedule:", data.schedule);
+    fieldLine("Liquidated Damages:", data.liquidatedDamages);
+    wrappedBlock("Certifications, Background Checks, etc.:", data.certifications);
+
+    heading("Design Team", 12);
+    fieldLine("Architect:", data.architect);
+    fieldLine("MEP:", data.mep);
+    fieldLine("Civil & Landscape:", data.civilLandscape);
+    fieldLine("Structural:", data.structural);
+    y -= 6;
+
+    wrappedBlock("Alternates:", data.alternates);
+
+    for (const section of KICKOFF_PACKAGE_SECTIONS) {
+      const file = kickoffFiles.get(kickoffFileKey(project, section));
+      if (!file) continue;
+
+      const dividerPage = outDoc.addPage([612, 792]);
+      dividerPage.drawText(section.toUpperCase(), {
+        x: 50,
+        y: 396,
+        size: 28,
+        font: boldFont,
+        color: rgb(0.05, 0.05, 0.05),
+      });
+
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+      const copiedPages = await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+      copiedPages.forEach((p) => outDoc.addPage(p));
+    }
+
+    return outDoc.save();
+  }
+
+  function formatTimeHHMM(hhmm) {
+    const [hh, mm] = hhmm.split(":").map(Number);
+    return new Date(2000, 0, 1, hh, mm).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   }
 
   // ---------- New Opportunity Form ----------

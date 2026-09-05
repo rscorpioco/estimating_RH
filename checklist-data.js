@@ -314,6 +314,29 @@ const SCHEDULE_RULES = [
   },
 ];
 
+// ---------- Kickoff / Bid Day Package ----------
+// The set of drawing categories a kickoff/bid-day package is built from, in the order
+// they get compiled — matches the standard cover-sheet layout used on real projects.
+const KICKOFF_PACKAGE_SECTIONS = ["Aerial", "Site Plan", "Floor Plan", "Exterior Elevations", "Building Section", "Wall Section"];
+
+const KICKOFF_FIELDS = [
+  { id: "bidDayDate", label: "Level Day / Bid Day Date", type: "date" },
+  { id: "bidDayTime", label: "Level Day / Bid Day Time", type: "time" },
+  { id: "projectAddress", label: "Project Address", type: "text" },
+  { id: "rfiDueBy", label: "RFIs Due By", type: "date" },
+  { id: "subBidsDueDate", label: "Sub Bids Due Date", type: "date" },
+  { id: "subBidsDueTime", label: "Sub Bids Due Time", type: "time" },
+  { id: "bidsGoodForDays", label: "Bids Must Be Good For (days)", type: "number" },
+  { id: "schedule", label: "Schedule", type: "text" },
+  { id: "liquidatedDamages", label: "Liquidated Damages", type: "text" },
+  { id: "certifications", label: "Certifications, Background Checks, etc.", type: "text" },
+  { id: "architect", label: "Architect", type: "text" },
+  { id: "mep", label: "MEP", type: "text" },
+  { id: "civilLandscape", label: "Civil & Landscape", type: "text" },
+  { id: "structural", label: "Structural", type: "text" },
+  { id: "alternates", label: "Alternates", type: "textarea" },
+];
+
 // ---------- New Opportunity Form ----------
 // Field layout, section grouping, and dropdown option lists transcribed from
 // Scorpio's "Project Tracker" workbook ("New Opportuity Form" + "New Opp Value List" tabs).

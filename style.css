@@ -617,3 +617,35 @@ dialog.schedule-dialog {
   text-decoration: none;
   display: inline-block;
 }
+
+/* Kickoff / Bid Day Package */
+
+.kickoff-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border);
+}
+
+.kickoff-upload-label {
+  width: 150px;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.kickoff-upload-row input[type="file"] {
+  flex: 1;
+  font-size: 12.5px;
+}
+
+.kickoff-upload-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
