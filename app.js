@@ -34,17 +34,34 @@
   const kickoffBody = document.getElementById("kickoffBody");
   const kickoffProgress = document.getElementById("kickoffProgress");
 
+  const kickoffZoomDialog = document.getElementById("kickoffZoomDialog");
+  const kickoffZoomPageLabel = document.getElementById("kickoffZoomPageLabel");
+  const kickoffZoomSelect = document.getElementById("kickoffZoomSelect");
+  const kickoffZoomCanvas = document.getElementById("kickoffZoomCanvas");
+
   let editingProjectId = null;
   let opportunityProjectId = null;
   let kickoffProjectId = null;
-  // The conformed drawing set, its rendered page thumbnails, and each page's tagged category
+  // The conformed drawing set, its rendered page thumbnails, each page's tagged category, and
+  // the parsed pdf.js document (kept around so the zoom view can re-render any page on demand)
   // are held in memory only (not persisted to localStorage — a drawing set can be many MB),
   // keyed by projectId. Re-attach and re-tag after a reload.
   const kickoffConformedFiles = new Map();
   const kickoffPageThumbnails = new Map();
   const kickoffPageAssignments = new Map();
+  const kickoffPdfDocs = new Map();
+  let kickoffZoomState = { projectId: null, pageIndex: 0 };
 
   init();
+
+  // All dialogs are native <dialog> elements shown via showModal(), which does NOT close
+  // any other already-open dialog — without this, opening a second one stacks on top of the
+  // first, and closing the top one leaves the other sitting there looking "stuck" open.
+  function closeAllDialogs(except) {
+    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog].forEach((d) => {
+      if (d && d !== except && d.open) d.close();
+    });
+  }
 
   function init() {
     LOCATIONS.forEach((loc) => fieldLocation.add(new Option(loc, loc)));
@@ -64,6 +81,26 @@
     kickoffDialog.addEventListener("close", () => {
       renderProjectList();
       renderActiveProject();
+    });
+
+    document.getElementById("closeKickoffZoomBtn").addEventListener("click", () => kickoffZoomDialog.close());
+    document.getElementById("kickoffZoomPrev").addEventListener("click", () => stepKickoffZoom(-1));
+    document.getElementById("kickoffZoomNext").addEventListener("click", () => stepKickoffZoom(1));
+    kickoffZoomSelect.addEventListener("change", () => {
+      const assignments = kickoffPageAssignments.get(kickoffZoomState.projectId) || [];
+      assignments[kickoffZoomState.pageIndex] = kickoffZoomSelect.value;
+      kickoffPageAssignments.set(kickoffZoomState.projectId, assignments);
+      const project = state.projects.find((p) => p.id === kickoffZoomState.projectId);
+      if (project) {
+        updateKickoffProgressLabel(project);
+        const grid = document.getElementById("kickoffThumbGrid");
+        const cell = grid && grid.children[kickoffZoomState.pageIndex];
+        if (cell) {
+          cell.classList.toggle("tagged", !!kickoffZoomSelect.value);
+          const cellSelect = cell.querySelector(".kickoff-thumb-select");
+          if (cellSelect) cellSelect.value = kickoffZoomSelect.value;
+        }
+      }
     });
 
     document.getElementById("closeOpportunityBtn").addEventListener("click", () => opportunityDialog.close());
@@ -99,6 +136,7 @@
   // ---------- Project CRUD ----------
 
   function openNewProjectDialog() {
+    closeAllDialogs(dialog);
     editingProjectId = null;
     dialogTitle.textContent = "New Project";
     projectForm.reset();
@@ -107,6 +145,7 @@
   }
 
   function openEditProjectDialog(project) {
+    closeAllDialogs(dialog);
     editingProjectId = project.id;
     dialogTitle.textContent = "Edit Project";
     fieldName.value = project.name;
@@ -507,6 +546,7 @@
   }
 
   function openScheduleDialog(project) {
+    closeAllDialogs(scheduleDialog);
     scheduleProjectName.textContent = `${project.name} — ${project.location}`;
     scheduleBody.innerHTML = "";
 
@@ -617,6 +657,7 @@
   }
 
   function openKickoffDialog(project) {
+    closeAllDialogs(kickoffDialog);
     kickoffProjectId = project.id;
     project.kickoffPackage = project.kickoffPackage || {};
     const levelOrBid = project.deliveryMethod === "Hard Bid" ? "Bid Day" : "Level Day";
@@ -715,6 +756,7 @@
     kickoffConformedFiles.set(project.id, file);
     const bytes = new Uint8Array(await file.arrayBuffer());
     const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    kickoffPdfDocs.set(project.id, pdf);
 
     kickoffPageAssignments.set(project.id, new Array(pdf.numPages).fill(""));
 
@@ -751,7 +793,9 @@
     const img = document.createElement("img");
     img.src = dataUrl;
     img.className = "kickoff-thumb-img";
-    img.alt = "Page " + (pageIndex + 1);
+    img.alt = "Page " + (pageIndex + 1) + " — click to zoom in and read the sheet number";
+    img.title = "Click to zoom in";
+    img.addEventListener("click", () => openKickoffZoom(project, pageIndex));
 
     const pageLabel = document.createElement("div");
     pageLabel.className = "kickoff-thumb-page";
@@ -774,6 +818,53 @@
     cell.appendChild(pageLabel);
     cell.appendChild(select);
     return cell;
+  }
+
+  // ---------- Kickoff page zoom ----------
+  // Thumbnails are rendered small for the grid; this re-renders the same page at a much
+  // higher resolution on demand, so a sheet number in the title block is actually readable.
+
+  async function openKickoffZoom(project, pageIndex) {
+    // Deliberately does NOT closeAllDialogs here — the zoom view nests on top of the
+    // Kickoff dialog (native <dialog> supports stacked modals), and closing it should
+    // return to Kickoff still open, not evict it.
+    kickoffZoomState = { projectId: project.id, pageIndex };
+    kickoffZoomSelect.innerHTML = "";
+    kickoffZoomSelect.add(new Option("— Unassigned —", ""));
+    KICKOFF_PACKAGE_SECTIONS.forEach((section) => kickoffZoomSelect.add(new Option(section, section)));
+    kickoffZoomDialog.showModal();
+    await renderKickoffZoomPage(project);
+  }
+
+  function stepKickoffZoom(delta) {
+    const project = state.projects.find((p) => p.id === kickoffZoomState.projectId);
+    if (!project) return;
+    const assignments = kickoffPageAssignments.get(project.id) || [];
+    const nextIndex = kickoffZoomState.pageIndex + delta;
+    if (nextIndex < 0 || nextIndex >= assignments.length) return;
+    kickoffZoomState.pageIndex = nextIndex;
+    renderKickoffZoomPage(project);
+  }
+
+  async function renderKickoffZoomPage(project) {
+    const pdf = kickoffPdfDocs.get(project.id);
+    const assignments = kickoffPageAssignments.get(project.id) || [];
+    const pageIndex = kickoffZoomState.pageIndex;
+    if (!pdf) return;
+
+    kickoffZoomPageLabel.textContent = `Page ${pageIndex + 1} of ${assignments.length}`;
+    kickoffZoomSelect.value = assignments[pageIndex] || "";
+
+    document.getElementById("kickoffZoomPrev").disabled = pageIndex <= 0;
+    document.getElementById("kickoffZoomNext").disabled = pageIndex >= assignments.length - 1;
+
+    const page = await pdf.getPage(pageIndex + 1);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = Math.min(3, 1100 / baseViewport.width);
+    const viewport = page.getViewport({ scale });
+    kickoffZoomCanvas.width = viewport.width;
+    kickoffZoomCanvas.height = viewport.height;
+    await page.render({ canvasContext: kickoffZoomCanvas.getContext("2d"), viewport }).promise;
   }
 
   function renderKickoffField(project, field) {
@@ -997,6 +1088,7 @@
   }
 
   function openOpportunityDialog(project) {
+    closeAllDialogs(opportunityDialog);
     opportunityProjectId = project.id;
     applyOpportunityDefaults(project);
     saveState();
