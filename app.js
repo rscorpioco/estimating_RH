@@ -36,6 +36,8 @@
   function init() {
     LOCATIONS.forEach((loc) => fieldLocation.add(new Option(loc, loc)));
     DELIVERY_METHODS.forEach((dm) => fieldDelivery.add(new Option(dm, dm)));
+    fieldTeamLead.add(new Option("—", ""));
+    TEAM_LEAD_OPTIONS.forEach((name) => fieldTeamLead.add(new Option(name, name)));
 
     document.getElementById("newProjectBtn").addEventListener("click", openNewProjectDialog);
     document.getElementById("cancelProjectBtn").addEventListener("click", () => dialog.close());
@@ -151,20 +153,32 @@
 
   // ---------- Progress helpers ----------
 
-  function countPhaseItems(phase) {
-    return phase.items.length;
+  // "If needed" items are a judgment call and always shown; CM/Hard-Bid-only items are
+  // hidden (and excluded from progress counts) when they don't apply to this project.
+  function itemApplies(item, project) {
+    if (item.condition === "CM") return project.deliveryMethod === "CM at Risk (Interview)";
+    if (item.condition === "HardBid") return project.deliveryMethod === "Hard Bid";
+    return true;
   }
 
-  function countPhaseChecked(phase, checked) {
-    return phase.items.filter((item) => checked[item.id]).length;
+  function applicableItems(phase, project) {
+    return phase.items.filter((item) => itemApplies(item, project));
+  }
+
+  function countPhaseItems(phase, project) {
+    return applicableItems(phase, project).length;
+  }
+
+  function countPhaseChecked(phase, checked, project) {
+    return applicableItems(phase, project).filter((item) => checked[item.id]).length;
   }
 
   function computeOverallProgress(project) {
     let total = 0;
     let done = 0;
     CHECKLIST_PHASES.forEach((phase) => {
-      total += countPhaseItems(phase);
-      done += countPhaseChecked(phase, project.checked || {});
+      total += countPhaseItems(phase, project);
+      done += countPhaseChecked(phase, project.checked || {}, project);
     });
     return { done, total, pct: total ? Math.round((done / total) * 100) : 0 };
   }
@@ -185,8 +199,8 @@
 
   function phaseDueStatus(project, phase) {
     const dueDate = addDays(project.activateDate, phase.dueOffsetDays);
-    const checkedCount = countPhaseChecked(phase, project.checked || {});
-    const total = countPhaseItems(phase);
+    const checkedCount = countPhaseChecked(phase, project.checked || {}, project);
+    const total = countPhaseItems(phase, project);
     const complete = total > 0 && checkedCount === total;
 
     if (complete) return { dueDate, cls: "complete", label: "Complete" };
@@ -288,8 +302,8 @@
 
   function renderPhase(project, phase) {
     const checked = project.checked || {};
-    const total = countPhaseItems(phase);
-    const done = countPhaseChecked(phase, checked);
+    const total = countPhaseItems(phase, project);
+    const done = countPhaseChecked(phase, checked, project);
     const status = phaseDueStatus(project, phase);
     const expandKey = project.id + ":" + phase.id;
     const isExpanded = state.expandedPhases[expandKey] !== false; // default expanded
@@ -320,12 +334,16 @@
     });
     phaseEl.appendChild(headerEl);
 
+    if (phase.id === "activate") {
+      phaseEl.appendChild(renderScheduleAffordance(project));
+    }
+
     const bodyEl = document.createElement("div");
     bodyEl.className = "phase-body";
     bodyEl.hidden = !isExpanded;
 
     let lastGroup = undefined;
-    phase.items.forEach((item) => {
+    applicableItems(phase, project).forEach((item) => {
       if (item.group && item.group !== lastGroup) {
         const groupEl = document.createElement("div");
         groupEl.className = "item-group-header";
@@ -386,17 +404,13 @@
       wrap.appendChild(renderOpportunityFormAffordance(project));
     }
 
-    if (item.id === "act-meetings") {
-      wrap.appendChild(renderScheduleAffordance(project));
-    }
-
     return wrap;
   }
 
   // ---------- Meeting & Task Schedule ----------
 
   function computeSchedule(project) {
-    return SCHEDULE_RULES.map((rule) => {
+    return SCHEDULE_RULES.filter((rule) => itemApplies(rule, project)).map((rule) => {
       const anchorDate = rule.anchor === "activate" ? project.activateDate : project.bidDueDate;
       if (!anchorDate) {
         return { rule, date: null, dateLabel: "— set a Bid Due Date to compute" };
@@ -451,7 +465,7 @@
 
   function renderScheduleAffordance(project) {
     const wrap = document.createElement("div");
-    wrap.className = "item-inline-actions";
+    wrap.className = "phase-schedule-bar";
 
     const btn = document.createElement("button");
     btn.type = "button";

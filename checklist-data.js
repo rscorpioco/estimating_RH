@@ -1,6 +1,9 @@
 // CM Project Startup Checklist data
-// Transcribed from Scorpio Corporation's preconstruction workflow.
+// Transcribed from Scorpio Corporation's preconstruction workflow ("first principles" revision).
 // `dueOffsetDays` is used to compute a target date from the project's Activate date.
+// `condition` ("CM" | "HardBid") hides an item when the project's delivery method doesn't match —
+// items with no `condition` always apply. "If needed" items are judgment calls, so they're never
+// auto-hidden — that qualifier stays in the item text instead.
 
 // Day 0 is the trigger event itself (deliverable package received / kickoff) —
 // it isn't a checklist phase, just the reference point every phase's day count is measured from.
@@ -10,253 +13,230 @@ const CHECKLIST_PHASES = [
   {
     id: "activate",
     name: "Activate",
-    deadlineLabel: "Day 1",
-    activity: "PC Project Activation · DDI · 6S Process · Beyond Estimating",
-    dueOffsetDays: 1,
+    deadlineLabel: "Day 0–4",
+    activity: "Opportunity Form · High-Level Analysis · Procore Setup · Team Coordination",
+    dueOffsetDays: 4,
     items: [
-      // "Do First" — these are external-facing commitments (meetings, subs, 6S team) that have their
-      // own lead time, so they go out before bid documents are even in hand, not after.
-      {
-        id: "act-meetings",
-        group: "Do First — Before Bid Documents Arrive",
-        text: "Schedule all required deliverable review meetings",
-        sub: [
-          { text: "Calendar Invite: Complete Kick Off Mtg (CD/Permit Set Only; if 6S team is needed)" },
-          { text: "Calendar Invite: Site Visit, if needed" },
-          { text: "Calendar Invite: Share Bid List to Team" },
-          { text: "Calendar Invite: Constructability Review with Field Manager Team Leaders and Operations Team Leaders" },
-          {
-            text: "Calendar Invite: Schedule Request & Logistics Plan — Aaron Rogers",
-            link: "mailto:aaron@scorpioco.com",
-            sub: [{ text: "cc: Project Manager and Field Manager" }],
-          },
-          { text: "Calendar Invite: Page Turn" },
-          { text: "Calendar Invite: RFI Log #1 Submitted" },
-          { text: "Calendar Invite: Discovery Status Update (subcontractor coverage, scope, etc.)" },
-          { text: "Calendar Invite: First-Pass Estimate & General Staffing/Conditions/Requirements Complete and Issued (a week and a day before due to client)" },
-          { text: "Calendar Invite: Staff & GC Review — Final Draft ready for review; 48 hrs before due to client" },
-          { text: "Calendar Invite: Precon Internal Deliverable Review Mtg — Final Draft ready for review; 24–48 hrs before Internal" },
-          { text: "Calendar Invite: Internal Deliverable Review Mtg — Final Draft ready for review; 48 hrs before due to client" },
-          { text: "Calendar Invite: Architect & Client Only Deliverable Review (phone call)" },
-          { text: "Calendar Invite: Client & Team Deliverable Review" },
-          { text: "Calendar Invite: Level Day or Bid Day (Level Day for CMAR, Bid Day for Hard Bid — days after subcontractor bids are due)" },
-          { text: "Calendar Invite: Order Lunch for Bid Day" },
-        ],
-      },
-      {
-        id: "act-sublist",
-        group: "Do First — Before Bid Documents Arrive",
-        text: "Create and distribute the subcontractor list",
-        sub: [
-          { text: "Build the trade partner list and review it with the assigned project operations and field operations team members" },
-          { text: "Distribute the list to the team (see the Share Bid List calendar invite above)" },
-        ],
-      },
-      {
-        id: "act-6s",
-        group: "Do First — Before Bid Documents Arrive",
-        text: "Distribute the 6S assignments and obtain approval",
-        sub: [{ text: "Confirm all 6S Team Members are included on the project in Procore" }],
-      },
-      {
-        id: "act-staffgc",
-        group: "Do First — Before Bid Documents Arrive",
-        text: "Create staffing and General Conditions (GCs)",
-      },
-      // Everything below depends on actually having the bid documents in hand.
       {
         id: "act-1",
-        group: "Once Bid Documents Are Received",
-        text: "Complete new opportunity form (if this is the first deliverable)",
+        group: "1 · New Opportunity Form & Procore Request",
+        text: "Complete new opportunity form and send to ATF for Procore creation",
       },
+
       {
-        id: "act-2",
-        group: "Once Bid Documents Are Received",
-        text: "Create efficiencies in bid documents through Bluebeam",
-      },
-      {
-        id: "act-3",
-        group: "Once Bid Documents Are Received",
-        text: "Update documents, plans, and specifications tabs in Procore",
-      },
-      {
-        id: "act-4",
-        group: "Once Bid Documents Are Received",
-        text: "Create the project in takeoff software",
-      },
-      {
-        id: "act-5",
-        group: "Once Bid Documents Are Received",
-        text: "Create the estimate in estimating software",
-        sub: [
-          { text: "Create estimate sorts in estimating software that match the owner's requirements" },
-          { text: "Double-check totals page items are calculating off the correct total. Confirm if the owner has requirements" },
-        ],
-      },
-      {
-        id: "act-6",
-        group: "Once Bid Documents Are Received",
-        text: "Send documents to project operations and field operations for document review, constructability review, schedule, and site utilization",
-      },
-      {
-        id: "act-advertise",
-        group: "Once Bid Documents Are Received",
-        text: "Advertise and formally invite bid",
+        id: "act-bluebeam",
+        group: "2 · High-Level Analysis (While Waiting on ATF)",
+        text: "Create documentation efficiencies through Bluebeam — bookmarks, page labels, etc. (required for Destini to read the construction plans)",
         sub: [
           {
-            text: "Advertisement requirements",
-            sub: [
-              { text: "Post in local newspapers and/or websites per the owner requirements" },
-              { text: "For GMP delivery, the ad must run at least 30 days before the bid due date — confirm the date against the Milestone Schedule" },
-              { text: "For UF projects, complete the Subcontractor Opportunity Form", link: "https://sbr.admin.ufl.edu/suppliers/subcontractor-opportunity-form/" },
-              { text: "Upload sample subcontracts" },
-            ],
+            text: "Look for conflicting info — missing pages, upside-down pages, missing specifications, etc.",
+            sub: [{ text: "Keep the RFI log open to begin tracking anything found" }],
           },
+          { text: "Look for niche information such as site visits, sealed bids, bid requirements, RFI deadline, etc." },
         ],
+      },
+      {
+        id: "act-destini",
+        group: "2 · High-Level Analysis (While Waiting on ATF)",
+        text: "Create the project in Destini take-off software (only once documentation efficiencies are done)",
+        sub: [{ text: "Roughly estimate the cost of Staffing & GCs" }],
+      },
+      { id: "act-6slevel", group: "2 · High-Level Analysis (While Waiting on ATF)", text: "Create 6S Level Assignments" },
+      { id: "act-bidpkgs", group: "2 · High-Level Analysis (While Waiting on ATF)", text: "Create Bid Packages" },
+      {
+        id: "act-rfideadline",
+        group: "2 · High-Level Analysis (While Waiting on ATF)",
+        text: "Establish the RFI bid deadline for subcontractors and time-block a reminder",
+      },
+      {
+        id: "act-curatedsublist",
+        group: "2 · High-Level Analysis (While Waiting on ATF)",
+        condition: "CM",
+        text: "Distribute the Curated Sub List to Leadership and Project/Field Managers for approval and input (email)",
+      },
+      {
+        id: "act-timeblocktakeoff",
+        group: "2 · High-Level Analysis (While Waiting on ATF)",
+        text: "Time-block take-off completion (Day 4 through Day 12)",
+      },
+      {
+        id: "act-staffgcreview",
+        group: "2 · High-Level Analysis (While Waiting on ATF)",
+        text: "Coordinate the Staff & GC estimate review with VP Precon (Day 4, meeting invite)",
+      },
+      {
+        id: "act-takeoffreview",
+        group: "2 · High-Level Analysis (While Waiting on ATF)",
+        text: "Coordinate the take-off estimate review with VP Precon (Day 13, meeting invite)",
+        sub: [{ text: "Ideally the take-off is fully complete so the VP can plug in numbers to build the Precon estimate" }],
+      },
+      {
+        id: "act-preconreview",
+        group: "2 · High-Level Analysis (While Waiting on ATF)",
+        text: "Coordinate the Precon estimate review with Leadership (Day 14/15, meeting invite)",
+      },
+      {
+        id: "act-updatetracker",
+        group: "2 · High-Level Analysis (While Waiting on ATF)",
+        text: "Update the Pre Con Live Project Tracker",
+      },
+
+      {
+        id: "act-procorefolders",
+        group: "3 · Once Procore Is Created — Share Project Info",
+        text: "Create Procore folders and upload contract documents and Scorpio sub docs",
+      },
+      {
+        id: "act-itbpackages",
+        group: "3 · Once Procore Is Created — Share Project Info",
+        text: "Create ITB bid packages within Procore and invite to bid",
+        sub: [{ text: "(Hard Bid only) Include the 01 Plan Room bid package — brings in companies that will send out ITBs on our behalf, for maximum coverage" }],
+      },
+      {
+        id: "act-uploaddocs",
+        group: "3 · Once Procore Is Created — Share Project Info",
+        text: "Upload drawings and specifications into Procore",
+        sub: [
+          { text: "Precon uses Destini for estimating; the rest of Scorpio uses Procore to view documents" },
+          { text: "This is not the subs' document section — only the internal team finds docs here" },
+        ],
+      },
+      {
+        id: "act-procorepeople",
+        group: "3 · Once Procore Is Created — Share Project Info",
+        text: "Confirm the proper people have been added to the project in Procore (6S Level team members, etc.)",
+      },
+
+      {
+        id: "act-confirm6steam",
+        group: "4 · Coordinate the Non-Precon Team",
+        text: "Confirm the 6S Level team in an email to the project team (Project Manager, Project Op Leader, Leadership, Field Manager)",
+      },
+      {
+        id: "act-schedrequest",
+        group: "4 · Coordinate the Non-Precon Team",
+        text: "Request the project schedule and logistics plan from the Project Manager, Field Manager, and VP of Field Ops (email with a meeting to set a deadline)",
+      },
+      { id: "act-sitevisit", group: "4 · Coordinate the Non-Precon Team", text: "(If needed) Coordinate a Site Visit (meeting)" },
+      { id: "act-bidrunner", group: "4 · Coordinate the Non-Precon Team", text: "(If needed) Coordinate a bid runner for sealed bids and its deadline (meeting)" },
+      {
+        id: "act-bidformreview",
+        group: "4 · Coordinate the Non-Precon Team",
+        text: "(If needed) Communicate the review of any bid form requirements to the proper leadership (email + meeting invite)",
+        sub: [{ text: "We complete the forms and have LT sign; coordinate their finalization as well" }],
+      },
+      { id: "act-constructreview", group: "4 · Coordinate the Non-Precon Team", text: "(If needed) Coordinate a constructability review (meeting)" },
+      {
+        id: "act-levelbidday",
+        group: "4 · Coordinate the Non-Precon Team",
+        text: "Coordinate Level/Bid Day plus lunch — email ATF and Lead (Day 21)",
+      },
+      {
+        id: "act-kickoff",
+        group: "4 · Coordinate the Non-Precon Team",
+        text: "Coordinate the Kick Off Meeting — invite the 6S team and Project team (Day 3)",
+      },
+
+      {
+        id: "act-bidmanualblock",
+        group: "5 · Coordinate PreCon & Yourself",
+        condition: "CM",
+        text: "Time-block bid manual creation (Day 16) — must be at least 7 days prior to the subcontractor bid deadline (check against your Bid Due Date)",
+      },
+      {
+        id: "act-nicheeventblock",
+        group: "5 · Coordinate PreCon & Yourself",
+        text: "Time-block any niche events such as bid requirements review, Bid Risk Calculator work, etc.",
+      },
+
+      { id: "act-planhub", group: "6 · Niche Tasks", condition: "HardBid", text: "Create the project on Plan Hub" },
+      {
+        id: "act-advertise",
+        group: "6 · Niche Tasks",
+        condition: "CM",
+        text: "Create the bidding advertisement per FL Statute Chapter 255, Section 0525 — must run as a legal notice in at least one medium at least 30 days before the advertised bid opening (by owner)",
+      },
+      {
+        id: "act-pageturn",
+        group: "6 · Niche Tasks",
+        condition: "CM",
+        text: "Coordinate a Page Turn with Leadership and the Owner (meeting)",
+      },
+      {
+        id: "act-buildersrisk",
+        group: "6 · Niche Tasks",
+        text: "(If needed) Obtain the Builder's Risk Quote",
+        sub: [
+          {
+            text: "Email doug.johnson1@hubinternational.com; kyle.whitman@hubinternational.com; andrea.kioutas@hubinternational.com",
+            link: "mailto:doug.johnson1@hubinternational.com,kyle.whitman@hubinternational.com,andrea.kioutas@hubinternational.com",
+          },
+          { text: "DD Set/Hard Bid; projects over $2M need a quote — under $2M is covered under the blanket policy" },
+        ],
+      },
+      {
+        id: "act-bond",
+        group: "6 · Niche Tasks",
+        text: "(If needed) Obtain the Bond Quote",
+        sub: [{ text: "Email Bill Palmer, Hatcher Insurance", link: "mailto:bpalmer@hatcherins.com" }],
+      },
+      {
+        id: "act-permit",
+        group: "6 · Niche Tasks",
+        text: "(If needed) Confirm permit cost with the local Authority Having Jurisdiction (AHJ)",
       },
     ],
   },
   {
     id: "discovery",
     name: "Discovery",
-    deadlineLabel: "Day 3–5",
-    activity: "DDI · Know the Job",
-    dueOffsetDays: 5,
+    deadlineLabel: "Day 5–13",
+    activity: "Take-Offs · Scope Coverage · Level Sheets",
+    dueOffsetDays: 13,
     items: [
-      { id: "dis-1", text: "Have kickoff meeting. Placemat and leveling assignments complete" },
-      {
-        id: "dis-2",
-        text: "Identify all bid requirements",
-        sub: [
-          { text: "Division 1 review: LDs, project duration, days to hold bids for, etc." },
-          { text: "Identify alternates and allowances" },
-          { text: "Receive a project-specific Builder's Risk quote: doug.johnson1@hubinternational.com, kyle.whitman@hubinternational.com, andrea.kioutas@hubinternational.com" },
-          { text: "Bid bonds — send request to Awaters@hatcherins.com, bpalmer@hatcherins.com" },
-          { text: "Confirm permit cost with local AHJ" },
-        ],
-      },
-      { id: "dis-3", text: "Review bid documents for incorporated value analysis and changes agreed upon in team meetings" },
-      { id: "dis-4", text: "Review perceived challenges to the project" },
-      { id: "dis-5", text: "Contact subcontractors to participate in the project" },
-    ],
-  },
-  {
-    id: "development",
-    name: "Development",
-    deadlineLabel: "Day 8–10",
-    activity: "DDI · Estimating · Scope Writing · Beyond Estimating",
-    dueOffsetDays: 10,
-    items: [
-      { id: "dev-1", text: "Complete RFI log and receive back responses" },
-      { id: "dev-2", text: "Complete takeoffs and populate Destini estimate. Complete internal estimate (starts in Discovery, completed in Development)" },
-      { id: "dev-3", text: "Update staff & general conditions estimate and send to associated leadership team lead for final edits" },
-      { id: "dev-4", text: "Create leveling sheets" },
-      { id: "dev-5", text: "Review subcontractor proposals and populate leveling sheet. Provide market feedback gut-check within 24 hours of sub bid due date" },
-      {
-        id: "dev-6",
-        text: "GMP-specific items",
-        sub: [
-          {
-            text: "Contact subcontractors",
-            sub: [{ text: "Send out weekly sub participation update to 6S team" }],
-          },
-          {
-            text: "Create bid manual including bid form, table of contents, all scopes of work",
-            sub: [{ text: "Distribute to subcontractors at least 5 working days prior to bid due date" }],
-          },
-          { text: "Schedule bid leveling day with 6S team" },
-        ],
-      },
-      {
-        id: "dev-7",
-        text: "Create page labels and bookmarks (Bluebeam — open the drawings)",
-        sub: [
-          { text: "Select Thumbnails to create page labels (Sheet No.)" },
-          { text: "Select Bookmarks to create bookmarks (Sheet No. + Drawing Name)" },
-        ],
-      },
-      {
-        id: "dev-8",
-        text: "Create ITB in Procore (after Finance confirms the project is in Procore)",
-        sub: [
-          {
-            text: "Upload drawings and specifications in Documents",
-            sub: [
-              { text: "Select Project Name" },
-              { text: "Select Project Tools → Home → Core Tools → Documents" },
-              { text: "Upload drawings in Drawing folder" },
-              { text: "Upload specifications in Specs folder" },
-              { text: "Description: scope of work listed, address" },
-              { text: "Always attach all new documents to Correspondence" },
-            ],
-          },
-          {
-            text: "Upload drawings and specifications in Project Management (PM)",
-            sub: [
-              { text: "Select Project Tools → PM → Drawings" },
-              { text: "Upload drawings from the Drawing folder; label each sheet" },
-              { text: "Select Project Tools → PM → Specifications" },
-              { text: "Upload specs from the Specs folder; label document" },
-            ],
-          },
-          {
-            text: "Confirm all team members are included in the project",
-            sub: [
-              { text: "Select Project Tools → Home → Directory" },
-              { text: "To add new members — +Bulk Add from Co. Directory" },
-            ],
-          },
-          {
-            text: "Create bid list in Bidding",
-            sub: [
-              { text: "Select Project Tools → Preconstruction → Bidding" },
-              { text: "Select +Create Bid Package" },
-              { text: "Choose 01 Plan Room" },
-            ],
-          },
-        ],
-      },
-      { id: "dev-9", text: "Create ITB in Plan Hub" },
-      { id: "dev-10", text: "Complete UF Subcontractor Opportunity Form (UF projects)", link: "https://sbr.admin.ufl.edu/suppliers/subcontractor-opportunity-form/" },
+      { id: "dis-takeoffs", text: "Begin take-offs immediately after the Kick Off Meeting" },
+      { id: "dis-trackdeadlines", text: "Track upcoming deadlines — take-off completion, take-off estimate review" },
+      { id: "dis-6sscope", text: "Update the 6S team on scope coverage" },
+      { id: "dis-levelsheets", text: "Create/update level sheets" },
+      { id: "dis-bidmanual", condition: "CM", text: "Build the bid manual" },
+      { id: "dis-bidreq", text: "(If needed) Finalize bid requirements" },
+      { id: "dis-rfilog", text: "Keep the RFI log current" },
     ],
   },
   {
     id: "details",
     name: "Details",
-    deadlineLabel: "Day 12–15",
-    activity: "DDI · Value Analysis · Bid Day Requirements",
-    dueOffsetDays: 15,
+    deadlineLabel: "Day 14–21",
+    activity: "Bid Risk · Value Analysis · Qualifications & Assumptions",
+    dueOffsetDays: 21,
     items: [
-      { id: "det-1", text: "Compile the leveling sheets" },
-      { id: "det-2", text: "Update the Bid Risk Calculator" },
-      { id: "det-3", text: "Create value analysis log" },
-      { id: "det-4", text: "Complete the deliverable document" },
-      { id: "det-5", text: "Review estimate with Team Lead, Kevin Bradford" },
+      { id: "det-bidrisk", text: "Update the Bid Risk Calculator" },
+      { id: "det-valog", condition: "CM", text: "Update the VA Log" },
+      { id: "det-trackdeadlines", text: "Track upcoming deadlines — Precon estimate review, Level/Bid Day" },
+      { id: "det-qualassumptions", text: "Draft Qualifications and Assumptions" },
+      { id: "det-deliverabledrafts", condition: "CM", text: "Draft the deliverable" },
     ],
   },
   {
     id: "done",
     name: "Done",
-    deadlineLabel: "Day 15–25",
-    activity: "6S Process · Client Deliverable · PC Closeout",
-    dueOffsetDays: 25,
+    deadlineLabel: "Day 21+",
+    activity: "Final Review · Submission · Post-Bid",
+    dueOffsetDays: 21,
     items: [
-      { id: "done-1", text: "Make final edits to deliverable based on the details review meeting" },
-      { id: "done-2", text: "Print and bind deliverable for the review meeting" },
-      { id: "done-3", text: "Review the deliverable with the owner" },
-      { id: "done-4", text: "Create printed and bound deliverable for client review meeting" },
-      { id: "done-5", text: "Calendar invite: Architect & Client only deliverable review (phone call)" },
-      { id: "done-6", text: "Calendar invite: Client & team deliverable review" },
+      { id: "done-edit", text: "Edit the deliverable based on review feedback" },
+      { id: "done-reviewedited", text: "Review the edited deliverable" },
+      { id: "done-submit", text: "After approval, submit the deliverable/hard bid to the owner" },
       {
-        id: "done-7",
+        id: "done-postbid",
         text: "Post-bid items",
         sub: [
+          { text: "Verify that all proposals have been saved to the O Drive" },
           { text: "Create \"Late Bids\" folder on server" },
           { text: "Review/distribute late bids" },
-          { text: "Verify that all proposals have been saved to the O Drive" },
           { text: "Update Procore subcontractor bid status and proposal status" },
           { text: "E-mail list of new subs to Procore administrator for creation" },
-          { text: "Data mine subcontractor proposals for relevant unit costs. Update unit costs database / Master Cost Data Sheet with new project" },
+          { text: "Data mine subcontractor proposals for relevant unit costs. Update unit costs database" },
           { text: "Actual Delivered Folder — save BRC + print Sage Bid Day detailed estimate and summary" },
         ],
       },
@@ -266,76 +246,71 @@ const CHECKLIST_PHASES = [
 
 const LOCATIONS = ["Gainesville", "Tallahassee", "Orlando", "Jacksonville", "Ocala"];
 const DELIVERY_METHODS = ["CM at Risk (Interview)", "Hard Bid"];
+const TEAM_LEAD_OPTIONS = ["Kevin Bradford", "Ken Brown", "Blake Honerbrink", "Carlos Vazquez", "Rachel Hottor"];
 
 // ---------- Meeting & Task Schedule ----------
-// Timing rules for the calendar invites/tasks that have a fixed, computable date —
-// anchored to either the project's Activate Date or its Subcontractor Bid Due Date.
+// Timing rules for the calendar invites/tasks that have a fixed, computable date — all anchored to
+// the project's Activate Date (Day 0) per the first-principles day count.
 // `time` is 24-hour "HH:MM" for a fixed-time event, or null for an all-day/undated task.
 const SCHEDULE_RULES = [
   {
     id: "kickoff",
-    label: "Calendar Invite: Complete Kick Off Mtg",
+    label: "Calendar Invite: Kick Off Meeting",
     anchor: "activate",
-    offsetDays: 0,
+    offsetDays: 3,
     time: "15:30",
     type: "external",
-    note: "6S team, if needed (CD/Permit Set Only)",
+    note: "Invite the 6S team and Project team",
   },
   {
-    id: "sublist",
-    label: "Log in to Procore — create & distribute the subcontractor bid list",
+    id: "staffgcreview",
+    label: "Meeting Invite: Staff & GC Estimate Review (VP Precon)",
     anchor: "activate",
-    offsetDays: 0,
-    time: null,
-    type: "self",
-    note: "Go to the project in Procore and build the bid list before bid documents arrive",
-  },
-  {
-    id: "schedreq",
-    label: "Calendar Invite: Schedule Request & Logistics Plan",
-    anchor: "bidDue",
-    offsetDays: -14,
+    offsetDays: 4,
     time: null,
     allDay: true,
     type: "external",
-    to: ["aaron@scorpioco.com"],
-    note: "To Aaron Rogers (aaron@scorpioco.com); cc Project Manager & Field Manager",
   },
   {
-    id: "statusUpdate1",
-    label: "Procore status pull #1 (will bid / submitted) — email 6S team",
-    anchor: "bidDue",
-    offsetDays: -21,
+    id: "takeoffreview",
+    label: "Meeting Invite: Take-Off Estimate Review (VP Precon)",
+    anchor: "activate",
+    offsetDays: 13,
     time: null,
-    type: "self",
-    note: "Pull bid-package status from Procore; email it to whoever is invited to the Level/Bid Day invite",
+    allDay: true,
+    type: "external",
+    note: "Ideally the take-off is fully complete so the VP can build the Precon estimate",
   },
   {
-    id: "statusUpdate2",
-    label: "Procore status pull #2 (will bid / submitted) — email 6S team",
-    anchor: "bidDue",
-    offsetDays: -14,
+    id: "preconreview",
+    label: "Meeting Invite: Precon Estimate Review (Leadership)",
+    anchor: "activate",
+    offsetDays: 14,
     time: null,
-    type: "self",
-    note: "Same as above — second pass, closer to bid due",
+    allDay: true,
+    type: "external",
+    note: "Day 14/15 — shown at the earlier date",
   },
   {
-    id: "lunch",
-    label: "Calendar Invite: Order Lunch for Bid Day",
-    anchor: "bidDue",
-    offsetDays: -1,
+    id: "bidmanualblock",
+    label: "Time Block: Bid Manual Creation",
+    anchor: "activate",
+    offsetDays: 16,
     time: null,
+    allDay: true,
     type: "self",
-    note: "2 days before Level/Bid Day, so catering has notice",
+    condition: "CM",
+    note: "Must be ≥ 7 days before the subcontractor bid deadline — verify against your Bid Due Date",
   },
   {
     id: "bidLevelDay",
     label: "Calendar Invite: Level Day / Bid Day",
-    anchor: "bidDue",
-    offsetDays: 1,
+    anchor: "activate",
+    offsetDays: 21,
     time: null,
+    allDay: true,
     type: "external",
-    note: "Level Day for CMAR, Bid Day for Hard Bid — 6S team",
+    note: "Level Day for CMAR, Bid Day for Hard Bid — plus lunch; email ATF and Lead",
   },
 ];
 
