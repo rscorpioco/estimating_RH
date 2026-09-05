@@ -37,9 +37,12 @@
   let editingProjectId = null;
   let opportunityProjectId = null;
   let kickoffProjectId = null;
-  // Attached drawing files are held in memory only (not persisted to localStorage — they
-  // can be many MB each) keyed by "<projectId>:<sectionName>". Re-attach after a reload.
-  const kickoffFiles = new Map();
+  // The conformed drawing set, its rendered page thumbnails, and each page's tagged category
+  // are held in memory only (not persisted to localStorage — a drawing set can be many MB),
+  // keyed by projectId. Re-attach and re-tag after a reload.
+  const kickoffConformedFiles = new Map();
+  const kickoffPageThumbnails = new Map();
+  const kickoffPageAssignments = new Map();
 
   init();
 
@@ -555,9 +558,20 @@
   }
 
   // ---------- Kickoff / Bid Day Package ----------
+  // A single conformed drawing set is uploaded once; pdf.js renders a thumbnail of every
+  // page in-browser, and each page is tagged with which of the 6 categories it belongs to.
+  // Export pulls the tagged pages back out of that one file per category.
 
-  function kickoffFileKey(project, section) {
-    return project.id + ":" + section;
+  function waitForPdfJs(timeoutMs) {
+    return new Promise((resolve) => {
+      if (window.pdfjsLib) return resolve(window.pdfjsLib);
+      const start = Date.now();
+      (function poll() {
+        if (window.pdfjsLib) return resolve(window.pdfjsLib);
+        if (Date.now() - start > (timeoutMs || 8000)) return resolve(null);
+        setTimeout(poll, 100);
+      })();
+    });
   }
 
   function countKickoffProgress(project) {
@@ -566,8 +580,18 @@
       const v = data[f.id];
       return v !== undefined && v !== null && String(v).trim() !== "";
     }).length;
-    const filesAttached = KICKOFF_PACKAGE_SECTIONS.filter((s) => kickoffFiles.has(kickoffFileKey(project, s))).length;
-    return { fieldsFilled, fieldsTotal: KICKOFF_FIELDS.length, filesAttached, filesTotal: KICKOFF_PACKAGE_SECTIONS.length };
+    const assignments = kickoffPageAssignments.get(project.id) || [];
+    const taggedPages = assignments.filter(Boolean).length;
+    const categoriesTagged = new Set(assignments.filter(Boolean)).size;
+    return {
+      fieldsFilled,
+      fieldsTotal: KICKOFF_FIELDS.length,
+      hasFile: kickoffConformedFiles.has(project.id),
+      totalPages: assignments.length,
+      taggedPages,
+      categoriesTagged,
+      categoriesTotal: KICKOFF_PACKAGE_SECTIONS.length,
+    };
   }
 
   function renderKickoffAffordance(project) {
@@ -580,10 +604,12 @@
     btn.textContent = "Build Kickoff / Bid Day Package";
     btn.addEventListener("click", () => openKickoffDialog(project));
 
-    const { fieldsFilled, fieldsTotal, filesAttached, filesTotal } = countKickoffProgress(project);
+    const p = countKickoffProgress(project);
     const hint = document.createElement("span");
     hint.className = "nof-progress-inline";
-    hint.textContent = `${fieldsFilled}/${fieldsTotal} fields, ${filesAttached}/${filesTotal} drawings attached`;
+    hint.textContent = p.hasFile
+      ? `${p.fieldsFilled}/${p.fieldsTotal} fields, ${p.taggedPages}/${p.totalPages} pages tagged`
+      : `${p.fieldsFilled}/${p.fieldsTotal} fields, no drawing set attached`;
 
     wrap.appendChild(btn);
     wrap.appendChild(hint);
@@ -602,8 +628,10 @@
   }
 
   function updateKickoffProgressLabel(project) {
-    const { fieldsFilled, fieldsTotal, filesAttached, filesTotal } = countKickoffProgress(project);
-    kickoffProgress.textContent = `${fieldsFilled}/${fieldsTotal} fields filled — ${filesAttached}/${filesTotal} drawings attached (attachments aren't saved between visits)`;
+    const p = countKickoffProgress(project);
+    kickoffProgress.textContent = p.hasFile
+      ? `${p.fieldsFilled}/${p.fieldsTotal} fields — ${p.taggedPages}/${p.totalPages} pages tagged across ${p.categoriesTagged}/${p.categoriesTotal} categories (the file isn't saved between visits)`
+      : `${p.fieldsFilled}/${p.fieldsTotal} fields — no drawing set attached yet`;
   }
 
   function renderKickoffBody(project) {
@@ -611,11 +639,20 @@
 
     const drawingsTitle = document.createElement("div");
     drawingsTitle.className = "nof-section-title";
-    drawingsTitle.textContent = "Drawings";
+    drawingsTitle.textContent = "Conformed Drawing Set";
     kickoffBody.appendChild(drawingsTitle);
-    KICKOFF_PACKAGE_SECTIONS.forEach((section) => {
-      kickoffBody.appendChild(renderKickoffUploadRow(project, section));
-    });
+    kickoffBody.appendChild(renderKickoffUploadRow(project));
+
+    const grid = document.createElement("div");
+    grid.className = "kickoff-thumb-grid";
+    grid.id = "kickoffThumbGrid";
+    kickoffBody.appendChild(grid);
+
+    const existingFile = kickoffConformedFiles.get(project.id);
+    const cachedThumbs = kickoffPageThumbnails.get(project.id);
+    if (existingFile && cachedThumbs) {
+      renderKickoffThumbnails(project, cachedThumbs);
+    }
 
     const infoTitle = document.createElement("div");
     infoTitle.className = "nof-section-title";
@@ -631,31 +668,36 @@
     }
   }
 
-  function renderKickoffUploadRow(project, section) {
-    const key = kickoffFileKey(project, section);
-    const existing = kickoffFiles.get(key);
+  function renderKickoffUploadRow(project) {
+    const existing = kickoffConformedFiles.get(project.id);
 
     const row = document.createElement("div");
     row.className = "kickoff-upload-row";
 
     const label = document.createElement("span");
     label.className = "kickoff-upload-label";
-    label.textContent = section;
+    label.textContent = "Drawing Set";
 
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "application/pdf";
-    input.id = "kickoff_file_" + section.replace(/\s+/g, "_");
+    input.id = "kickoff_conformed_file";
 
     const status = document.createElement("span");
     status.className = "kickoff-upload-status";
     status.textContent = existing ? existing.name : "No file attached";
 
-    input.addEventListener("change", () => {
+    input.addEventListener("change", async () => {
       const file = input.files && input.files[0];
       if (!file) return;
-      kickoffFiles.set(key, file);
-      status.textContent = file.name;
+      status.textContent = "Reading " + file.name + "…";
+      try {
+        await processKickoffConformedSet(project, file);
+        status.textContent = file.name;
+      } catch (err) {
+        status.textContent = "Couldn't read that file";
+        alert("Couldn't read that PDF: " + (err && err.message ? err.message : err));
+      }
       updateKickoffProgressLabel(project);
       renderProjectList();
     });
@@ -664,6 +706,74 @@
     row.appendChild(input);
     row.appendChild(status);
     return row;
+  }
+
+  async function processKickoffConformedSet(project, file) {
+    const pdfjsLib = await waitForPdfJs();
+    if (!pdfjsLib) throw new Error("The page-preview library didn't load — check your internet connection");
+
+    kickoffConformedFiles.set(project.id, file);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+
+    kickoffPageAssignments.set(project.id, new Array(pdf.numPages).fill(""));
+
+    const grid = document.getElementById("kickoffThumbGrid");
+    grid.innerHTML = "";
+    const thumbs = [];
+
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 0.35 });
+      const canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      const dataUrl = canvas.toDataURL("image/png");
+      thumbs.push(dataUrl);
+      grid.appendChild(renderKickoffThumbCell(project, pageNum - 1, dataUrl));
+    }
+
+    kickoffPageThumbnails.set(project.id, thumbs);
+  }
+
+  function renderKickoffThumbnails(project, thumbs) {
+    const grid = document.getElementById("kickoffThumbGrid");
+    grid.innerHTML = "";
+    thumbs.forEach((dataUrl, i) => grid.appendChild(renderKickoffThumbCell(project, i, dataUrl)));
+  }
+
+  function renderKickoffThumbCell(project, pageIndex, dataUrl) {
+    const assignments = kickoffPageAssignments.get(project.id) || [];
+    const cell = document.createElement("div");
+    cell.className = "kickoff-thumb-cell";
+
+    const img = document.createElement("img");
+    img.src = dataUrl;
+    img.className = "kickoff-thumb-img";
+    img.alt = "Page " + (pageIndex + 1);
+
+    const pageLabel = document.createElement("div");
+    pageLabel.className = "kickoff-thumb-page";
+    pageLabel.textContent = "Page " + (pageIndex + 1);
+
+    const select = document.createElement("select");
+    select.className = "kickoff-thumb-select";
+    select.add(new Option("— Unassigned —", ""));
+    KICKOFF_PACKAGE_SECTIONS.forEach((section) => select.add(new Option(section, section)));
+    select.value = assignments[pageIndex] || "";
+    select.addEventListener("change", () => {
+      assignments[pageIndex] = select.value;
+      kickoffPageAssignments.set(project.id, assignments);
+      cell.classList.toggle("tagged", !!select.value);
+      updateKickoffProgressLabel(project);
+    });
+
+    cell.classList.toggle("tagged", !!select.value);
+    cell.appendChild(img);
+    cell.appendChild(pageLabel);
+    cell.appendChild(select);
+    return cell;
   }
 
   function renderKickoffField(project, field) {
@@ -805,23 +915,30 @@
 
     wrappedBlock("Alternates:", data.alternates);
 
-    for (const section of KICKOFF_PACKAGE_SECTIONS) {
-      const file = kickoffFiles.get(kickoffFileKey(project, section));
-      if (!file) continue;
+    const conformedFile = kickoffConformedFiles.get(project.id);
+    const assignments = kickoffPageAssignments.get(project.id) || [];
+    if (conformedFile) {
+      const srcBytes = new Uint8Array(await conformedFile.arrayBuffer());
+      const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
 
-      const dividerPage = outDoc.addPage([612, 792]);
-      dividerPage.drawText(section.toUpperCase(), {
-        x: 50,
-        y: 396,
-        size: 28,
-        font: boldFont,
-        color: rgb(0.05, 0.05, 0.05),
-      });
+      for (const section of KICKOFF_PACKAGE_SECTIONS) {
+        const pageIndices = assignments
+          .map((tag, idx) => (tag === section ? idx : -1))
+          .filter((idx) => idx !== -1);
+        if (!pageIndices.length) continue;
 
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-      const copiedPages = await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
-      copiedPages.forEach((p) => outDoc.addPage(p));
+        const dividerPage = outDoc.addPage([612, 792]);
+        dividerPage.drawText(section.toUpperCase(), {
+          x: 50,
+          y: 396,
+          size: 28,
+          font: boldFont,
+          color: rgb(0.05, 0.05, 0.05),
+        });
+
+        const copiedPages = await outDoc.copyPages(srcDoc, pageIndices);
+        copiedPages.forEach((p) => outDoc.addPage(p));
+      }
     }
 
     return outDoc.save();
