@@ -86,9 +86,23 @@
   <div class="kickoff-zoom-body">
     <button type="button" class="btn kickoff-zoom-nav" id="kickoffZoomPrev">‹ Prev</button>
     <div class="kickoff-zoom-canvas-wrap">
-      <canvas id="kickoffZoomCanvas"></canvas>
+      <canvas id="kickoffZoomCanvas" class="doc-viewer-canvas"></canvas>
     </div>
     <button type="button" class="btn kickoff-zoom-nav" id="kickoffZoomNext">Next ›</button>
+  </div>
+</dialog>
+
+<dialog id="nofDocViewerDialog" class="kickoff-zoom-dialog">
+  <div class="kickoff-zoom-header">
+    <span id="nofDocViewerLabel">Page 1</span>
+    <button type="button" class="btn" id="closeNofDocViewerBtn" aria-label="Close">Close</button>
+  </div>
+  <div class="kickoff-zoom-body">
+    <button type="button" class="btn kickoff-zoom-nav" id="nofDocViewerPrev">‹ Prev</button>
+    <div class="kickoff-zoom-canvas-wrap">
+      <canvas id="nofDocViewerCanvas" class="doc-viewer-canvas"></canvas>
+    </div>
+    <button type="button" class="btn kickoff-zoom-nav" id="nofDocViewerNext">Next ›</button>
   </div>
 </dialog>
 

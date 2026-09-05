@@ -39,6 +39,10 @@
   const kickoffZoomSelect = document.getElementById("kickoffZoomSelect");
   const kickoffZoomCanvas = document.getElementById("kickoffZoomCanvas");
 
+  const nofDocViewerDialog = document.getElementById("nofDocViewerDialog");
+  const nofDocViewerLabel = document.getElementById("nofDocViewerLabel");
+  const nofDocViewerCanvas = document.getElementById("nofDocViewerCanvas");
+
   let editingProjectId = null;
   let opportunityProjectId = null;
   let kickoffProjectId = null;
@@ -52,6 +56,13 @@
   const kickoffPdfDocs = new Map();
   let kickoffZoomState = { projectId: null, pageIndex: 0 };
 
+  // The drawing/contract PDFs uploaded on the New Opportunity Form, same in-memory-only
+  // treatment as the Kickoff conformed set — not persisted, only the field values they
+  // produce are saved. Keyed by projectId.
+  const nofDrawingDocs = new Map();
+  const nofContractDocs = new Map();
+  let nofDocViewerState = { projectId: null, kind: null, pageIndex: 0 };
+
   // Fields whose values already live elsewhere in the app (the project record). They stay
   // "linked" — recomputed fresh every time the form opens — until the user types into them
   // here, at which point their override wins and the link is dropped for that field.
@@ -64,13 +75,31 @@
     bidDate: (project) => project.bidDueDate || "",
   };
 
+  // Fields we attempt to pull out of an uploaded drawing/contract PDF via a best-effort text
+  // scan (label-matching, not real comprehension) — see extractNofFieldsFromText below.
+  // Declared here for the same reason as NOF_LINKED_FIELDS above.
+  const NOF_EXTRACTION_RULES = [
+    { fieldId: "jobsiteAddress", labels: ["Project Address", "Site Address", "Property Address", "Project Location"] },
+    { fieldId: "ownerCompany", labels: ["Owner", "Client"] },
+    { fieldId: "architectCo", labels: ["Architect", "Architect of Record"] },
+    { fieldId: "civilEngineerCo", labels: ["Civil Engineer"] },
+    { fieldId: "structuralEngineerCo", labels: ["Structural Engineer"] },
+    { fieldId: "mepfpEngineerCo", labels: ["MEP Engineer", "MEPFP Engineer", "Mechanical Engineer"] },
+    { fieldId: "landscapeArchitectCo", labels: ["Landscape Architect"] },
+    { fieldId: "estStartDate", labels: ["Date of Commencement", "Commencement Date", "Start Date"], type: "date" },
+    { fieldId: "estCompletionDate", labels: ["Date of Substantial Completion", "Substantial Completion Date", "Completion Date"], type: "date" },
+    { fieldId: "bidDate", labels: ["Bid Date", "Date of Bid"], type: "date" },
+    { fieldId: "estProjectValue", labels: ["Contract Sum", "Contract Price", "Guaranteed Maximum Price", "GMP Amount", "Total Contract Amount", "Not To Exceed Amount"], type: "currency" },
+  ];
+  const NOF_EXTRACTABLE_FIELD_IDS = new Set([...NOF_EXTRACTION_RULES.map((r) => r.fieldId), "contractType"]);
+
   init();
 
   // All dialogs are native <dialog> elements shown via showModal(), which does NOT close
   // any other already-open dialog — without this, opening a second one stacks on top of the
   // first, and closing the top one leaves the other sitting there looking "stuck" open.
   function closeAllDialogs(except) {
-    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog].forEach((d) => {
+    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog].forEach((d) => {
       if (d && d !== except && d.open) d.close();
     });
   }
@@ -122,6 +151,10 @@
       renderProjectList();
       renderActiveProject();
     });
+
+    document.getElementById("closeNofDocViewerBtn").addEventListener("click", () => nofDocViewerDialog.close());
+    document.getElementById("nofDocViewerPrev").addEventListener("click", () => stepNofDocViewer(-1));
+    document.getElementById("nofDocViewerNext").addEventListener("click", () => stepNofDocViewer(1));
 
     renderProjectList();
     renderActiveProject();
@@ -1054,6 +1087,237 @@
 
   // ---------- New Opportunity Form ----------
 
+  // ---- Drawing / contract upload: best-effort text extraction ----
+  // This is a label-matching heuristic against the PDF's text layer, not real reading
+  // comprehension — it can miss things or grab the wrong line entirely. It only ever fills
+  // fields that are still blank, and every field it touches gets an "extracted" badge so
+  // it's obvious which values came from a scan versus were typed in. Scanned/rasterized
+  // drawings have no text layer at all (confirmed against a real Scorpio drawing set), so
+  // most drawing uploads will find nothing to extract — that's expected, not a bug.
+
+  async function extractPdfText(pdfDoc) {
+    let text = "";
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+      const page = await pdfDoc.getPage(i);
+      const content = await page.getTextContent();
+      text += groupTextItemsIntoLines(content.items).join("\n") + "\n";
+    }
+    return text;
+  }
+
+  // pdf.js hands back individual positioned text fragments, not lines — group fragments that
+  // share roughly the same vertical position into a line, left-to-right, so label-matching
+  // regexes like /^Owner:\s*(.+)/ have something to match against.
+  function groupTextItemsIntoLines(items) {
+    const rows = new Map();
+    items.forEach((item) => {
+      const y = Math.round(item.transform[5] / 2) * 2;
+      if (!rows.has(y)) rows.set(y, []);
+      rows.get(y).push({ x: item.transform[4], str: item.str });
+    });
+    return [...rows.keys()]
+      .sort((a, b) => b - a)
+      .map((y) => rows.get(y).sort((a, b) => a.x - b.x).map((i) => i.str).join(" ").trim())
+      .filter(Boolean);
+  }
+
+  function parseFuzzyDate(str) {
+    const d = new Date(str.trim());
+    if (isNaN(d.getTime())) return null;
+    if (d.getFullYear() < 1990 || d.getFullYear() > 2100) return null;
+    return d.toISOString().slice(0, 10);
+  }
+
+  function parseCurrencyAmount(str) {
+    const cleaned = str.replace(/[^0-9.]/g, "");
+    if (!cleaned) return null;
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? null : String(num);
+  }
+
+  function matchContractType(fullText) {
+    if (/guaranteed maximum price|\bGMP\b/i.test(fullText)) return "GMP";
+    if (/lump sum|invitation to bid|\bITB\b/i.test(fullText)) return "Bid";
+    if (/statement of qualifications|\bSOQ\b/i.test(fullText)) return "Statement of Qualifications";
+    return null;
+  }
+
+  function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function extractNofFieldsFromText(text) {
+    const lines = text.split("\n");
+    const found = {};
+    NOF_EXTRACTION_RULES.forEach((rule) => {
+      for (const label of rule.labels) {
+        const re = new RegExp("^\\s*" + escapeRegex(label) + "\\s*[:\\-]\\s*(.+?)\\s*$", "i");
+        let raw = null;
+        for (const line of lines) {
+          const m = line.match(re);
+          if (m && m[1] && m[1].trim()) { raw = m[1].trim(); break; }
+        }
+        if (raw) {
+          let value = raw;
+          if (rule.type === "date") value = parseFuzzyDate(value);
+          else if (rule.type === "currency") value = parseCurrencyAmount(value);
+          if (value) { found[rule.fieldId] = value; break; }
+        }
+      }
+    });
+    const contractType = matchContractType(text);
+    if (contractType) found.contractType = contractType;
+    return found;
+  }
+
+  function nofFieldLabelFor(fieldId) {
+    const field = NOF_ALL_FIELDS.find((f) => f.id === fieldId);
+    return field ? field.label : fieldId;
+  }
+
+  async function processNofSourceDoc(project, kind, file) {
+    const pdfjsLib = await waitForPdfJs();
+    if (!pdfjsLib) throw new Error("The PDF-reading library didn't load — check your internet connection");
+
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+    const text = await extractPdfText(pdfDoc);
+    const matches = extractNofFieldsFromText(text);
+
+    const data = project.opportunity || (project.opportunity = {});
+    data._extracted = data._extracted || {};
+    const matchedFieldIds = [];
+    Object.keys(matches).forEach((fieldId) => {
+      const current = data[fieldId];
+      if (current === undefined || current === null || String(current).trim() === "") {
+        data[fieldId] = matches[fieldId];
+        data._extracted[fieldId] = kind;
+        matchedFieldIds.push(fieldId);
+      }
+    });
+
+    const map = kind === "drawing" ? nofDrawingDocs : nofContractDocs;
+    map.set(project.id, {
+      file,
+      pdfDoc,
+      numPages: pdfDoc.numPages,
+      lastExtraction: { matchedFieldIds, hasText: text.trim().length > 0 },
+    });
+
+    saveState();
+  }
+
+  function renderNofSourceDocRow(project, kind) {
+    const map = kind === "drawing" ? nofDrawingDocs : nofContractDocs;
+    const doc = map.get(project.id);
+
+    const wrap = document.createElement("div");
+    wrap.className = "nof-doc-upload-wrap";
+
+    const row = document.createElement("div");
+    row.className = "kickoff-upload-row";
+
+    const label = document.createElement("span");
+    label.className = "kickoff-upload-label";
+    label.textContent = kind === "drawing" ? "Drawing (PDF)" : "Contract (PDF)";
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/pdf";
+
+    const status = document.createElement("span");
+    status.className = "kickoff-upload-status";
+    status.textContent = doc ? `${doc.file.name} (${doc.numPages} page${doc.numPages === 1 ? "" : "s"})` : "No file attached";
+
+    input.addEventListener("change", async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      status.textContent = "Reading " + file.name + "…";
+      try {
+        await processNofSourceDoc(project, kind, file);
+      } catch (err) {
+        alert("Couldn't read that PDF: " + (err && err.message ? err.message : err));
+      }
+      renderOpportunityBody(project);
+      updateOpportunityProgressLabel(project);
+    });
+
+    row.appendChild(label);
+    row.appendChild(input);
+    row.appendChild(status);
+
+    if (doc) {
+      const viewBtn = document.createElement("button");
+      viewBtn.type = "button";
+      viewBtn.className = "btn btn-sm";
+      viewBtn.textContent = "View Pages";
+      viewBtn.addEventListener("click", () => openNofDocViewer(project, kind));
+      row.appendChild(viewBtn);
+    }
+
+    wrap.appendChild(row);
+
+    if (doc && doc.lastExtraction) {
+      const { matchedFieldIds, hasText } = doc.lastExtraction;
+      const names = matchedFieldIds.map(nofFieldLabelFor);
+      const note = document.createElement("div");
+      note.className = "nof-doc-note";
+      if (names.length > 0) {
+        note.textContent = `Pulled ${names.length} field${names.length === 1 ? "" : "s"} from this ` +
+          `${kind}: ${names.join(", ")}. Only fields that were still blank got filled in — please verify them.`;
+      } else if (!hasText) {
+        note.textContent = `No selectable text found in this ${kind} — it's likely a scanned image. ` +
+          `Use "View Pages" to read it and fill in fields by hand.`;
+      } else {
+        note.textContent = `Found text in this ${kind}, but couldn't confidently match it to any fields. ` +
+          `Use "View Pages" to read it and fill in by hand.`;
+      }
+      wrap.appendChild(note);
+    }
+
+    return wrap;
+  }
+
+  function openNofDocViewer(project, kind) {
+    // Deliberately does NOT closeAllDialogs — nests on top of the Opportunity dialog like the
+    // Kickoff zoom nests on top of the Kickoff dialog.
+    const map = kind === "drawing" ? nofDrawingDocs : nofContractDocs;
+    const doc = map.get(project.id);
+    if (!doc) return;
+    nofDocViewerState = { projectId: project.id, kind, pageIndex: 0 };
+    nofDocViewerDialog.showModal();
+    renderNofDocViewerPage();
+  }
+
+  function stepNofDocViewer(delta) {
+    const map = nofDocViewerState.kind === "drawing" ? nofDrawingDocs : nofContractDocs;
+    const doc = map.get(nofDocViewerState.projectId);
+    if (!doc) return;
+    const next = nofDocViewerState.pageIndex + delta;
+    if (next < 0 || next >= doc.numPages) return;
+    nofDocViewerState.pageIndex = next;
+    renderNofDocViewerPage();
+  }
+
+  async function renderNofDocViewerPage() {
+    const map = nofDocViewerState.kind === "drawing" ? nofDrawingDocs : nofContractDocs;
+    const doc = map.get(nofDocViewerState.projectId);
+    if (!doc) return;
+    const pageIndex = nofDocViewerState.pageIndex;
+
+    nofDocViewerLabel.textContent = `${nofDocViewerState.kind === "drawing" ? "Drawing" : "Contract"} — page ${pageIndex + 1} of ${doc.numPages}`;
+    document.getElementById("nofDocViewerPrev").disabled = pageIndex <= 0;
+    document.getElementById("nofDocViewerNext").disabled = pageIndex >= doc.numPages - 1;
+
+    const page = await doc.pdfDoc.getPage(pageIndex + 1);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = Math.min(3, 1100 / baseViewport.width);
+    const viewport = page.getViewport({ scale });
+    nofDocViewerCanvas.width = viewport.width;
+    nofDocViewerCanvas.height = viewport.height;
+    await page.render({ canvasContext: nofDocViewerCanvas.getContext("2d"), viewport }).promise;
+  }
+
   function countOpportunityFieldsFilled(project) {
     const data = project.opportunity || {};
     const filled = NOF_ALL_FIELDS.filter((f) => {
@@ -1134,6 +1398,22 @@
   function renderOpportunityBody(project) {
     opportunityFormBody.innerHTML = "";
 
+    const sourceDocsTitle = document.createElement("div");
+    sourceDocsTitle.className = "nof-section-title";
+    sourceDocsTitle.textContent = "Source Documents (optional)";
+    opportunityFormBody.appendChild(sourceDocsTitle);
+
+    const sourceDocsIntro = document.createElement("p");
+    sourceDocsIntro.className = "nof-doc-intro";
+    sourceDocsIntro.textContent = "Upload a drawing set or contract PDF and any matching fields " +
+      "below that are still blank will be filled in automatically. This is a best-effort text " +
+      "scan, not real reading comprehension — always double-check anything pulled in. Scanned " +
+      "or image-only drawings usually have no extractable text at all.";
+    opportunityFormBody.appendChild(sourceDocsIntro);
+
+    opportunityFormBody.appendChild(renderNofSourceDocRow(project, "drawing"));
+    opportunityFormBody.appendChild(renderNofSourceDocRow(project, "contract"));
+
     const linkedCount = countOpportunityLinkedFields(project);
     if (linkedCount > 0) {
       const banner = document.createElement("div");
@@ -1193,16 +1473,32 @@
     labelText.textContent = field.label;
     label.appendChild(labelText);
 
-    const isLinked = !!NOF_LINKED_FIELDS[field.id];
+    const isLinkable = !!NOF_LINKED_FIELDS[field.id];
+    const isExtractable = NOF_EXTRACTABLE_FIELD_IDS.has(field.id);
     let autoBadge = null;
-    if (isLinked) {
+    if (isLinkable || isExtractable) {
       autoBadge = document.createElement("span");
-      autoBadge.className = "nof-auto-badge";
-      autoBadge.textContent = "Auto";
-      autoBadge.title = "Filled in automatically from this project's details — edit this field to override.";
-      autoBadge.hidden = !data._linked || !data._linked[field.id];
       labelText.appendChild(autoBadge);
     }
+
+    function refreshBadge() {
+      if (!autoBadge) return;
+      if (data._linked && data._linked[field.id]) {
+        autoBadge.className = "nof-auto-badge";
+        autoBadge.textContent = "Auto";
+        autoBadge.title = "Filled in automatically from this project's details — edit this field to override.";
+        autoBadge.hidden = false;
+      } else if (data._extracted && data._extracted[field.id]) {
+        const source = data._extracted[field.id] === "drawing" ? "Drawing" : "Contract";
+        autoBadge.className = "nof-auto-badge nof-extract-badge";
+        autoBadge.textContent = "From " + source;
+        autoBadge.title = `Pulled from the uploaded ${source.toLowerCase()} — please verify.`;
+        autoBadge.hidden = false;
+      } else {
+        autoBadge.hidden = true;
+      }
+    }
+    refreshBadge();
 
     let input;
     if (field.type === "select") {
@@ -1221,10 +1517,16 @@
     }
 
     function markOverridden() {
-      if (!isLinked) return;
-      data._linked = data._linked || {};
-      data._linked[field.id] = false;
-      if (autoBadge) autoBadge.hidden = true;
+      let changed = false;
+      if (data._linked && data._linked[field.id]) {
+        data._linked[field.id] = false;
+        changed = true;
+      }
+      if (data._extracted && data._extracted[field.id]) {
+        delete data._extracted[field.id];
+        changed = true;
+      }
+      if (changed) refreshBadge();
     }
 
     input.id = "nof_" + field.id;

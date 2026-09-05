@@ -576,6 +576,26 @@ dialog.nof-dialog {
 
 .nof-copy-btn:hover { background: #eef1f5; }
 
+.nof-extract-badge {
+  background: var(--navy-light);
+}
+
+.nof-doc-intro {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+.nof-doc-upload-wrap {
+  margin-bottom: 10px;
+}
+
+.nof-doc-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 5px 0 0;
+}
+
 .nof-footer {
   display: flex;
   align-items: center;
@@ -772,7 +792,8 @@ dialog.kickoff-zoom-dialog {
   border: 1px solid var(--border);
 }
 
-.kickoff-zoom-header #closeKickoffZoomBtn {
+.kickoff-zoom-header #closeKickoffZoomBtn,
+.kickoff-zoom-header #closeNofDocViewerBtn {
   margin-left: auto;
 }
 
@@ -792,7 +813,7 @@ dialog.kickoff-zoom-dialog {
   justify-content: center;
 }
 
-#kickoffZoomCanvas {
+.doc-viewer-canvas {
   max-width: 100%;
   border: 1px solid var(--border);
   background: #fff;
