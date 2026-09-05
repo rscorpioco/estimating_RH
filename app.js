@@ -1042,6 +1042,16 @@
 
   // ---------- New Opportunity Form ----------
 
+  // Fields whose values already live elsewhere in the app (the project record). They stay
+  // "linked" — recomputed fresh every time the form opens — until the user types into them
+  // here, at which point their override wins and the link is dropped for that field.
+  const NOF_LINKED_FIELDS = {
+    officeLocation: (project) => NOF_OFFICE_CODES[project.location] || "",
+    deliveryMethodNOF: (project) => (project.deliveryMethod === "Hard Bid" ? "Hard Bid" : project.deliveryMethod ? "CM" : ""),
+    pcPoManager: (project) => (NOF_STAFF_OPTIONS.includes(project.teamLead) ? project.teamLead : ""),
+    bidDate: (project) => project.bidDueDate || "",
+  };
+
   function countOpportunityFieldsFilled(project) {
     const data = project.opportunity || {};
     const filled = NOF_ALL_FIELDS.filter((f) => {
@@ -1049,6 +1059,11 @@
       return v !== undefined && v !== null && String(v).trim() !== "";
     }).length;
     return { filled, total: NOF_ALL_FIELDS.length };
+  }
+
+  function countOpportunityLinkedFields(project) {
+    const linked = (project.opportunity && project.opportunity._linked) || {};
+    return Object.keys(NOF_LINKED_FIELDS).filter((id) => linked[id]).length;
   }
 
   function renderOpportunityFormAffordance(project) {
@@ -1062,9 +1077,12 @@
     btn.addEventListener("click", () => openOpportunityDialog(project));
 
     const { filled, total } = countOpportunityFieldsFilled(project);
+    const linkedCount = countOpportunityLinkedFields(project);
     const progress = document.createElement("span");
     progress.className = "nof-progress-inline";
-    progress.textContent = filled > 0 ? `${filled}/${total} fields filled` : `${total} fields — not started`;
+    progress.textContent = filled > 0
+      ? `${filled}/${total} fields filled${linkedCount > 0 ? ` (${linkedCount} auto)` : ""}`
+      : `${total} fields — not started`;
 
     wrap.appendChild(btn);
     wrap.appendChild(progress);
@@ -1074,14 +1092,18 @@
   function applyOpportunityDefaults(project) {
     project.opportunity = project.opportunity || {};
     const data = project.opportunity;
+    data._linked = data._linked || {};
+
+    // Keep linked fields synced with the project record for as long as the user leaves them
+    // alone; the moment they edit one here, renderOpportunityField drops its link.
+    Object.keys(NOF_LINKED_FIELDS).forEach((id) => {
+      if (data[id] === undefined || data._linked[id]) {
+        data[id] = NOF_LINKED_FIELDS[id](project);
+        data._linked[id] = true;
+      }
+    });
+
     if (data.formDate === undefined) data.formDate = todayIso();
-    if (data.officeLocation === undefined) data.officeLocation = NOF_OFFICE_CODES[project.location] || "";
-    if (data.deliveryMethodNOF === undefined) {
-      data.deliveryMethodNOF = project.deliveryMethod === "Hard Bid" ? "Hard Bid" : project.deliveryMethod ? "CM" : "";
-    }
-    if (data.pcPoManager === undefined) {
-      data.pcPoManager = NOF_STAFF_OPTIONS.includes(project.teamLead) ? project.teamLead : "";
-    }
     if (data.dateOwnerProject === undefined) {
       data.dateOwnerProject = `${project.activateDate} — [Owner] — ${project.name}`;
     }
@@ -1101,11 +1123,25 @@
 
   function updateOpportunityProgressLabel(project) {
     const { filled, total } = countOpportunityFieldsFilled(project);
-    opportunityProgress.textContent = `${filled} of ${total} fields filled`;
+    const linkedCount = countOpportunityLinkedFields(project);
+    opportunityProgress.textContent = linkedCount > 0
+      ? `${filled} of ${total} fields filled — ${linkedCount} auto-filled from the project`
+      : `${filled} of ${total} fields filled`;
   }
 
   function renderOpportunityBody(project) {
     opportunityFormBody.innerHTML = "";
+
+    const linkedCount = countOpportunityLinkedFields(project);
+    if (linkedCount > 0) {
+      const banner = document.createElement("div");
+      banner.className = "nof-auto-banner";
+      banner.textContent = `${linkedCount} field${linkedCount === 1 ? "" : "s"} below ` +
+        `(marked Auto) ${linkedCount === 1 ? "is" : "are"} filled in automatically from this ` +
+        `project's setup — Office, Delivery Method, PC/PO Manager, Bid Date. Edit any of them ` +
+        `to override just this form.`;
+      opportunityFormBody.appendChild(banner);
+    }
 
     const generalTitle = document.createElement("div");
     generalTitle.className = "nof-section-title";
@@ -1155,6 +1191,17 @@
     labelText.textContent = field.label;
     label.appendChild(labelText);
 
+    const isLinked = !!NOF_LINKED_FIELDS[field.id];
+    let autoBadge = null;
+    if (isLinked) {
+      autoBadge = document.createElement("span");
+      autoBadge.className = "nof-auto-badge";
+      autoBadge.textContent = "Auto";
+      autoBadge.title = "Filled in automatically from this project's details — edit this field to override.";
+      autoBadge.hidden = !data._linked || !data._linked[field.id];
+      labelText.appendChild(autoBadge);
+    }
+
     let input;
     if (field.type === "select") {
       input = document.createElement("select");
@@ -1171,15 +1218,24 @@
       input.value = data[field.id] || "";
     }
 
+    function markOverridden() {
+      if (!isLinked) return;
+      data._linked = data._linked || {};
+      data._linked[field.id] = false;
+      if (autoBadge) autoBadge.hidden = true;
+    }
+
     input.id = "nof_" + field.id;
     input.addEventListener("input", () => {
       data[field.id] = input.value;
+      markOverridden();
       saveState();
       updateOpportunityProgressLabel(project);
     });
     if (field.type === "select") {
       input.addEventListener("change", () => {
         data[field.id] = input.value;
+        markOverridden();
         saveState();
         updateOpportunityProgressLabel(project);
       });
@@ -1187,6 +1243,25 @@
 
     label.appendChild(input);
     wrap.appendChild(label);
+
+    if (field.id === "jobsiteAddress") {
+      const copyBtn = document.createElement("button");
+      copyBtn.type = "button";
+      copyBtn.className = "nof-copy-btn";
+      copyBtn.textContent = "Copy from Owner Address";
+      copyBtn.addEventListener("click", () => {
+        data.jobsiteAddress = data.ownerAddress || "";
+        data.jobsiteCityStateZip = data.ownerCityStateZip || "";
+        const addrInput = document.getElementById("nof_jobsiteAddress");
+        const cszInput = document.getElementById("nof_jobsiteCityStateZip");
+        if (addrInput) addrInput.value = data.jobsiteAddress;
+        if (cszInput) cszInput.value = data.jobsiteCityStateZip;
+        saveState();
+        updateOpportunityProgressLabel(project);
+      });
+      wrap.appendChild(copyBtn);
+    }
+
     return wrap;
   }
 
