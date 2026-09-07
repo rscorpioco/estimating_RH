@@ -590,6 +590,19 @@ dialog.nof-dialog {
   margin-bottom: 10px;
 }
 
+.conformed-set-affordance {
+  margin-top: 6px;
+}
+
+.conformed-set-affordance .nof-doc-upload-wrap {
+  margin-bottom: 0;
+}
+
+.conformed-set-affordance .kickoff-upload-row {
+  border-bottom: none;
+  padding: 0;
+}
+
 .nof-doc-note {
   font-size: 11px;
   color: var(--text-muted);

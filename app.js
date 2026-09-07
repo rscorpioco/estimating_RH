@@ -56,12 +56,13 @@
   const kickoffPdfDocs = new Map();
   let kickoffZoomState = { projectId: null, pageIndex: 0 };
 
-  // The drawing/contract PDFs uploaded on the New Opportunity Form, same in-memory-only
-  // treatment as the Kickoff conformed set — not persisted, only the field values they
-  // produce are saved. Keyed by projectId.
-  const nofDrawingDocs = new Map();
-  const nofContractDocs = new Map();
-  let nofDocViewerState = { projectId: null, kind: null, pageIndex: 0 };
+  // The conformed set (drawings + specs + ITB) uploaded ahead of the New Opportunity Form,
+  // same in-memory-only treatment as the Kickoff conformed set — not persisted, only the
+  // field values it produces are saved. Keyed by projectId. Uploading it either from the
+  // checklist affordance or from inside the Opportunity dialog writes to this same map, so
+  // both places always show the same state.
+  const nofConformedSetDocs = new Map();
+  let nofDocViewerState = { projectId: null, pageIndex: 0 };
 
   // Fields whose values already live elsewhere in the app (the project record). They stay
   // "linked" — recomputed fresh every time the form opens — until the user types into them
@@ -75,23 +76,30 @@
     bidDate: (project) => project.bidDueDate || "",
   };
 
-  // Fields we attempt to pull out of an uploaded drawing/contract PDF via a best-effort text
-  // scan (label-matching, not real comprehension) — see extractNofFieldsFromText below.
-  // Declared here for the same reason as NOF_LINKED_FIELDS above.
+  // Fields we attempt to pull out of the uploaded conformed set via a best-effort text scan
+  // (label-matching, not real comprehension) — see extractNofFieldsFromText below. The same
+  // labels are expected to appear regardless of drawing stage (Conceptual, Schematic Design,
+  // Design Development, or Construction Documents) — only how much else is on the sheet
+  // changes. Declared here for the same reason as NOF_LINKED_FIELDS above.
   const NOF_EXTRACTION_RULES = [
     { fieldId: "jobsiteAddress", labels: ["Project Address", "Site Address", "Property Address", "Project Location"] },
+    { fieldId: "projectSqFt", labels: ["Gross Square Footage", "Gross Floor Area", "Building Square Footage", "GSF"], type: "number" },
     { fieldId: "ownerCompany", labels: ["Owner", "Client"] },
     { fieldId: "architectCo", labels: ["Architect", "Architect of Record"] },
     { fieldId: "civilEngineerCo", labels: ["Civil Engineer"] },
     { fieldId: "structuralEngineerCo", labels: ["Structural Engineer"] },
     { fieldId: "mepfpEngineerCo", labels: ["MEP Engineer", "MEPFP Engineer", "Mechanical Engineer"] },
     { fieldId: "landscapeArchitectCo", labels: ["Landscape Architect"] },
+    { fieldId: "interiorDesignerCo", labels: ["Interior Designer"] },
     { fieldId: "estStartDate", labels: ["Date of Commencement", "Commencement Date", "Start Date"], type: "date" },
     { fieldId: "estCompletionDate", labels: ["Date of Substantial Completion", "Substantial Completion Date", "Completion Date"], type: "date" },
     { fieldId: "bidDate", labels: ["Bid Date", "Date of Bid"], type: "date" },
     { fieldId: "estProjectValue", labels: ["Contract Sum", "Contract Price", "Guaranteed Maximum Price", "GMP Amount", "Total Contract Amount", "Not To Exceed Amount"], type: "currency" },
   ];
-  const NOF_EXTRACTABLE_FIELD_IDS = new Set([...NOF_EXTRACTION_RULES.map((r) => r.fieldId), "contractType"]);
+  // "contractType" is matched separately (a document-wide keyword scan, not a labeled line —
+  // see extractNofFieldsFromText) and "dateOwnerProject" gets its Owner name spliced in by
+  // processConformedSetUpload rather than matched directly, so both need adding by hand here.
+  const NOF_EXTRACTABLE_FIELD_IDS = new Set([...NOF_EXTRACTION_RULES.map((r) => r.fieldId), "contractType", "dateOwnerProject"]);
 
   init();
 
@@ -502,6 +510,10 @@
 
     if (item.sub && item.sub.length) {
       wrap.appendChild(renderSubList(item.sub));
+    }
+
+    if (item.id === "act-conformed-set") {
+      wrap.appendChild(renderConformedSetAffordance(project));
     }
 
     if (item.id === "act-1") {
@@ -1087,13 +1099,14 @@
 
   // ---------- New Opportunity Form ----------
 
-  // ---- Drawing / contract upload: best-effort text extraction ----
+  // ---- Conformed set upload: best-effort text extraction ----
   // This is a label-matching heuristic against the PDF's text layer, not real reading
   // comprehension — it can miss things or grab the wrong line entirely. It only ever fills
   // fields that are still blank, and every field it touches gets an "extracted" badge so
-  // it's obvious which values came from a scan versus were typed in. Scanned/rasterized
-  // drawings have no text layer at all (confirmed against a real Scorpio drawing set), so
-  // most drawing uploads will find nothing to extract — that's expected, not a bug.
+  // it's obvious which values came from the scan versus were typed in. Purely scanned/
+  // rasterized drawing sheets have no text layer at all (confirmed against a real Scorpio
+  // drawing set), but a conformed set's spec/ITB pages are usually real text, so this still
+  // finds plenty even when every drawing sheet in the same file comes up empty.
 
   async function extractPdfText(pdfDoc) {
     let text = "";
@@ -1160,7 +1173,7 @@
         if (raw) {
           let value = raw;
           if (rule.type === "date") value = parseFuzzyDate(value);
-          else if (rule.type === "currency") value = parseCurrencyAmount(value);
+          else if (rule.type === "currency" || rule.type === "number") value = parseCurrencyAmount(value);
           if (value) { found[rule.fieldId] = value; break; }
         }
       }
@@ -1175,7 +1188,7 @@
     return field ? field.label : fieldId;
   }
 
-  async function processNofSourceDoc(project, kind, file) {
+  async function processConformedSetUpload(project, file) {
     const pdfjsLib = await waitForPdfJs();
     if (!pdfjsLib) throw new Error("The PDF-reading library didn't load — check your internet connection");
 
@@ -1184,20 +1197,34 @@
     const text = await extractPdfText(pdfDoc);
     const matches = extractNofFieldsFromText(text);
 
-    const data = project.opportunity || (project.opportunity = {});
+    // The checklist affordance lets this run before the Opportunity Form has ever been
+    // opened, so the project-linked/placeholder defaults (dateOwnerProject's "[Owner]" text
+    // included) may not exist yet — apply them first so the substitution below has something
+    // to work with, and so the linked-field badges are already correct on first open.
+    applyOpportunityDefaults(project);
+    const data = project.opportunity;
     data._extracted = data._extracted || {};
     const matchedFieldIds = [];
     Object.keys(matches).forEach((fieldId) => {
       const current = data[fieldId];
       if (current === undefined || current === null || String(current).trim() === "") {
         data[fieldId] = matches[fieldId];
-        data._extracted[fieldId] = kind;
+        data._extracted[fieldId] = true;
         matchedFieldIds.push(fieldId);
       }
     });
 
-    const map = kind === "drawing" ? nofDrawingDocs : nofContractDocs;
-    map.set(project.id, {
+    // The composite "Date + Owner + Project Name" field auto-fills with an "[Owner]"
+    // placeholder when the project is created (applyOpportunityDefaults) — swap in the real
+    // owner name now that we have one, but only if that placeholder is still sitting there
+    // untouched, so a manually-edited value is never overwritten.
+    if (matches.ownerCompany && typeof data.dateOwnerProject === "string" && data.dateOwnerProject.includes("[Owner]")) {
+      data.dateOwnerProject = data.dateOwnerProject.replace("[Owner]", matches.ownerCompany);
+      data._extracted.dateOwnerProject = true;
+      matchedFieldIds.push("dateOwnerProject");
+    }
+
+    nofConformedSetDocs.set(project.id, {
       file,
       pdfDoc,
       numPages: pdfDoc.numPages,
@@ -1207,9 +1234,11 @@
     saveState();
   }
 
-  function renderNofSourceDocRow(project, kind) {
-    const map = kind === "drawing" ? nofDrawingDocs : nofContractDocs;
-    const doc = map.get(project.id);
+  // Shared by the checklist affordance and the Opportunity dialog's own upload row — both
+  // read/write the same nofConformedSetDocs entry, so uploading from either place shows up
+  // in both. `onUpdate` lets each caller decide what to re-render after a file is processed.
+  function renderConformedSetUploadRow(project, onUpdate) {
+    const doc = nofConformedSetDocs.get(project.id);
 
     const wrap = document.createElement("div");
     wrap.className = "nof-doc-upload-wrap";
@@ -1219,7 +1248,7 @@
 
     const label = document.createElement("span");
     label.className = "kickoff-upload-label";
-    label.textContent = kind === "drawing" ? "Drawing (PDF)" : "Contract (PDF)";
+    label.textContent = "Conformed Set (PDF)";
 
     const input = document.createElement("input");
     input.type = "file";
@@ -1234,12 +1263,11 @@
       if (!file) return;
       status.textContent = "Reading " + file.name + "…";
       try {
-        await processNofSourceDoc(project, kind, file);
+        await processConformedSetUpload(project, file);
       } catch (err) {
         alert("Couldn't read that PDF: " + (err && err.message ? err.message : err));
       }
-      renderOpportunityBody(project);
-      updateOpportunityProgressLabel(project);
+      onUpdate();
     });
 
     row.appendChild(label);
@@ -1251,7 +1279,7 @@
       viewBtn.type = "button";
       viewBtn.className = "btn btn-sm";
       viewBtn.textContent = "View Pages";
-      viewBtn.addEventListener("click", () => openNofDocViewer(project, kind));
+      viewBtn.addEventListener("click", () => openNofDocViewer(project));
       row.appendChild(viewBtn);
     }
 
@@ -1263,13 +1291,13 @@
       const note = document.createElement("div");
       note.className = "nof-doc-note";
       if (names.length > 0) {
-        note.textContent = `Pulled ${names.length} field${names.length === 1 ? "" : "s"} from this ` +
-          `${kind}: ${names.join(", ")}. Only fields that were still blank got filled in — please verify them.`;
+        note.textContent = `Pulled ${names.length} field${names.length === 1 ? "" : "s"} from the conformed ` +
+          `set: ${names.join(", ")}. Only fields that were still blank got filled in — please verify them.`;
       } else if (!hasText) {
-        note.textContent = `No selectable text found in this ${kind} — it's likely a scanned image. ` +
+        note.textContent = `No selectable text found in this file — it's likely fully scanned/rasterized. ` +
           `Use "View Pages" to read it and fill in fields by hand.`;
       } else {
-        note.textContent = `Found text in this ${kind}, but couldn't confidently match it to any fields. ` +
+        note.textContent = `Found text in this file, but couldn't confidently match it to any fields. ` +
           `Use "View Pages" to read it and fill in by hand.`;
       }
       wrap.appendChild(note);
@@ -1278,20 +1306,19 @@
     return wrap;
   }
 
-  function openNofDocViewer(project, kind) {
+  function openNofDocViewer(project) {
     // Deliberately does NOT closeAllDialogs — nests on top of the Opportunity dialog like the
-    // Kickoff zoom nests on top of the Kickoff dialog.
-    const map = kind === "drawing" ? nofDrawingDocs : nofContractDocs;
-    const doc = map.get(project.id);
+    // Kickoff zoom nests on top of the Kickoff dialog (and can be opened without the
+    // Opportunity dialog being open at all, from the checklist affordance directly).
+    const doc = nofConformedSetDocs.get(project.id);
     if (!doc) return;
-    nofDocViewerState = { projectId: project.id, kind, pageIndex: 0 };
+    nofDocViewerState = { projectId: project.id, pageIndex: 0 };
     nofDocViewerDialog.showModal();
     renderNofDocViewerPage();
   }
 
   function stepNofDocViewer(delta) {
-    const map = nofDocViewerState.kind === "drawing" ? nofDrawingDocs : nofContractDocs;
-    const doc = map.get(nofDocViewerState.projectId);
+    const doc = nofConformedSetDocs.get(nofDocViewerState.projectId);
     if (!doc) return;
     const next = nofDocViewerState.pageIndex + delta;
     if (next < 0 || next >= doc.numPages) return;
@@ -1300,12 +1327,11 @@
   }
 
   async function renderNofDocViewerPage() {
-    const map = nofDocViewerState.kind === "drawing" ? nofDrawingDocs : nofContractDocs;
-    const doc = map.get(nofDocViewerState.projectId);
+    const doc = nofConformedSetDocs.get(nofDocViewerState.projectId);
     if (!doc) return;
     const pageIndex = nofDocViewerState.pageIndex;
 
-    nofDocViewerLabel.textContent = `${nofDocViewerState.kind === "drawing" ? "Drawing" : "Contract"} — page ${pageIndex + 1} of ${doc.numPages}`;
+    nofDocViewerLabel.textContent = `Conformed set — page ${pageIndex + 1} of ${doc.numPages}`;
     document.getElementById("nofDocViewerPrev").disabled = pageIndex <= 0;
     document.getElementById("nofDocViewerNext").disabled = pageIndex >= doc.numPages - 1;
 
@@ -1316,6 +1342,22 @@
     nofDocViewerCanvas.width = viewport.width;
     nofDocViewerCanvas.height = viewport.height;
     await page.render({ canvasContext: nofDocViewerCanvas.getContext("2d"), viewport }).promise;
+  }
+
+  function renderConformedSetAffordance(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "conformed-set-affordance";
+    wrap.appendChild(renderConformedSetUploadRow(project, () => {
+      renderProjectList();
+      renderActiveProject();
+      // If the Opportunity dialog happens to already be open for this project, refresh it too
+      // so newly-pulled fields and badges show up without needing to close and reopen it.
+      if (opportunityDialog.open && opportunityProjectId === project.id) {
+        renderOpportunityBody(project);
+        updateOpportunityProgressLabel(project);
+      }
+    }));
+    return wrap;
   }
 
   function countOpportunityFieldsFilled(project) {
@@ -1400,19 +1442,23 @@
 
     const sourceDocsTitle = document.createElement("div");
     sourceDocsTitle.className = "nof-section-title";
-    sourceDocsTitle.textContent = "Source Documents (optional)";
+    sourceDocsTitle.textContent = "Conformed Set (optional)";
     opportunityFormBody.appendChild(sourceDocsTitle);
 
     const sourceDocsIntro = document.createElement("p");
     sourceDocsIntro.className = "nof-doc-intro";
-    sourceDocsIntro.textContent = "Upload a drawing set or contract PDF and any matching fields " +
-      "below that are still blank will be filled in automatically. This is a best-effort text " +
-      "scan, not real reading comprehension — always double-check anything pulled in. Scanned " +
-      "or image-only drawings usually have no extractable text at all.";
+    sourceDocsIntro.textContent = "Upload the conformed set (drawings + specifications + ITB) " +
+      "from the architect — any design stage works — and any matching fields below that are " +
+      "still blank will be filled in automatically. This is a best-effort text scan, not real " +
+      "reading comprehension — always double-check anything pulled in. Purely scanned drawing " +
+      "sheets usually have no extractable text at all, though spec/ITB pages in the same set often do.";
     opportunityFormBody.appendChild(sourceDocsIntro);
 
-    opportunityFormBody.appendChild(renderNofSourceDocRow(project, "drawing"));
-    opportunityFormBody.appendChild(renderNofSourceDocRow(project, "contract"));
+    opportunityFormBody.appendChild(renderConformedSetUploadRow(project, () => {
+      renderProjectList();
+      renderOpportunityBody(project);
+      updateOpportunityProgressLabel(project);
+    }));
 
     const linkedCount = countOpportunityLinkedFields(project);
     if (linkedCount > 0) {
@@ -1489,10 +1535,9 @@
         autoBadge.title = "Filled in automatically from this project's details — edit this field to override.";
         autoBadge.hidden = false;
       } else if (data._extracted && data._extracted[field.id]) {
-        const source = data._extracted[field.id] === "drawing" ? "Drawing" : "Contract";
         autoBadge.className = "nof-auto-badge nof-extract-badge";
-        autoBadge.textContent = "From " + source;
-        autoBadge.title = `Pulled from the uploaded ${source.toLowerCase()} — please verify.`;
+        autoBadge.textContent = "From Conformed Set";
+        autoBadge.title = "Pulled from the uploaded conformed set — please verify.";
         autoBadge.hidden = false;
       } else {
         autoBadge.hidden = true;
@@ -1689,9 +1734,9 @@
       if (row.right) { labelCell(row.right.labelCell, row.right.label); valueCell(row.right.valueCell, row.right); }
     });
 
-    sectionHeader("B28:F28", "Opportunity Description & Notes");
-    ws.mergeCells("B29:F32");
-    const descCell = ws.getCell("B29");
+    sectionHeader("B29:F29", "Opportunity Description & Notes");
+    ws.mergeCells("B30:F33");
+    const descCell = ws.getCell("B30");
     descCell.value = data.description || "";
     descCell.font = { size: 10 };
     descCell.alignment = { vertical: "top", horizontal: "left", wrapText: true, indent: 1 };

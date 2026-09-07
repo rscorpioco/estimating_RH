@@ -18,6 +18,14 @@ const CHECKLIST_PHASES = [
     dueOffsetDays: 4,
     items: [
       {
+        id: "act-conformed-set",
+        group: "1 · New Opportunity Form & Procore Request",
+        text: "Upload the conformed set (drawings + specifications + ITB) from the architect",
+        sub: [
+          { text: "Any design stage works — Conceptual, Schematic Design, Design Development, or Construction Documents — the fields pulled are the same" },
+        ],
+      },
+      {
         id: "act-1",
         group: "1 · New Opportunity Form & Procore Request",
         text: "Complete new opportunity form and send to ATF for Procore creation",
@@ -478,9 +486,15 @@ const NOF_OWNER_AEC_ROWS = [
   { excelRow: 27,
     left: { id: "landscapeArchitectCo", label: "Landscape Architect Co.", type: "text", labelCell: "B27", valueCell: "C27" },
     right: { id: "landscapeArchitectName", label: "Name of Landscape Architect", type: "text", labelCell: "E27", valueCell: "F27" } },
+  { excelRow: 28,
+    left: { id: "interiorDesignerCo", label: "Interior Designer Co.", type: "text", labelCell: "B28", valueCell: "C28" },
+    right: { id: "interiorDesignerName", label: "Name of Interior Designer", type: "text", labelCell: "E28", valueCell: "F28" } },
 ];
 
-const NOF_DESCRIPTION_FIELD = { id: "description", label: "Opportunity Description & Notes", type: "textarea", labelCell: "B28", valueCell: "B29" };
+// Not part of Scorpio's real Project Tracker template (which stops at Landscape Architect) —
+// added per Rachel's request so the drawing set's Interior Designer info has somewhere to land.
+// The .xlsx export shifts the Description section down one row (to B29/B30) to make room for it.
+const NOF_DESCRIPTION_FIELD = { id: "description", label: "Opportunity Description & Notes", type: "textarea", labelCell: "B29", valueCell: "B30" };
 
 // Flat list of every field, used to compute completion counts.
 const NOF_ALL_FIELDS = [
