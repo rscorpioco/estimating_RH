@@ -403,6 +403,63 @@ const NOF_STAFF_OPTIONS = [
   "Will Cooley", "Zach Corda",
 ];
 
+// ---------- 6S Level Assignments / Bid Packages ----------
+// Trade/bid-package taxonomy transcribed from Scorpio's "Leveling Assignments" workbook
+// (Gainesville tab). Not every trade applies to every project — leave a trade's Leveler
+// blank if it isn't part of this bid. Levelers/Captains are assigned per project rather
+// than defaulted per office, since who's on a given deal changes project to project.
+const LEVELING_MIN_BIDDERS = 3;
+
+const LEVELING_TRADE_GROUPS = [
+  { name: "SITE", trades: [
+    { bp: "Emails", trade: "Bids Email Management" },
+    { bp: "01A-01K", trade: "Division 01" },
+    { bp: "02A", trade: "Selective Demolition" },
+    { bp: "31A", trade: "Earthwork" },
+    { bp: "32A", trade: "Fencing, Gates" },
+    { bp: "32B", trade: "Landscaping, Irrigation" },
+  ]},
+  { name: "STRUCTURE", trades: [
+    { bp: "03A", trade: "Cast in Place Concrete" },
+    { bp: "04A", trade: "Masonry" },
+    { bp: "05A", trade: "Structural Steel" },
+    { bp: "05C", trade: "Ornamental Metals" },
+    { bp: "05D", trade: "Pre-Engineered Metal Trusses" },
+  ]},
+  { name: "SYSTEMS", trades: [
+    { bp: "21A", trade: "Fire Protection" },
+    { bp: "22A", trade: "Plumbing" },
+    { bp: "23A", trade: "HVAC" },
+    { bp: "26A", trade: "Electrical" },
+    { bp: "27A", trade: "Data/Communications" },
+    { bp: "28A", trade: "Electronic Security" },
+  ]},
+  { name: "SKIN", trades: [
+    { bp: "07A", trade: "Waterproofing" },
+    { bp: "07B", trade: "Roofing" },
+    { bp: "07I", trade: "Insulation" },
+    { bp: "08A", trade: "Doors, Frames, Hardware" },
+    { bp: "08B", trade: "Storefront, Curtainwall, Glazing" },
+    { bp: "08D", trade: "Overhead Doors" },
+    { bp: "09A", trade: "Drywall/ Framing" },
+    { bp: "09B", trade: "EIFS/Stucco/Plaster" },
+  ]},
+  { name: "SURFACES", trades: [
+    { bp: "06D", trade: "Casework & Millwork" },
+    { bp: "09C", trade: "Acoustical Ceilings" },
+    { bp: "09D", trade: "Painting" },
+    { bp: "09E", trade: "Flooring" },
+    { bp: "09K", trade: "Resinous Flooring" },
+  ]},
+  { name: "SPECIALTIES", trades: [
+    { bp: "10A", trade: "Toilet Accessories" },
+    { bp: "10B", trade: "Signage" },
+    { bp: "10E", trade: "Aluminum Canopies" },
+    { bp: "12A", trade: "Window Treatments" },
+    { bp: "14A", trade: "Elevators" },
+  ]},
+];
+
 const NOF_FINANCE_CONTACTS = [
   { region: "Gainesville - Majors", name: "Maegan Jones" },
   { region: "Gainesville - Minors", name: "Heath Locklear" },

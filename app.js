@@ -43,9 +43,15 @@
   const nofDocViewerLabel = document.getElementById("nofDocViewerLabel");
   const nofDocViewerCanvas = document.getElementById("nofDocViewerCanvas");
 
+  const levelDialog = document.getElementById("levelDialog");
+  const levelProjectName = document.getElementById("levelProjectName");
+  const levelBody = document.getElementById("levelBody");
+  const levelProgress = document.getElementById("levelProgress");
+
   let editingProjectId = null;
   let opportunityProjectId = null;
   let kickoffProjectId = null;
+  let levelProjectId = null;
   // The conformed drawing set, its rendered page thumbnails, each page's tagged category, and
   // the parsed pdf.js document (kept around so the zoom view can re-render any page on demand)
   // are held in memory only (not persisted to localStorage — a drawing set can be many MB),
@@ -107,7 +113,7 @@
   // any other already-open dialog — without this, opening a second one stacks on top of the
   // first, and closing the top one leaves the other sitting there looking "stuck" open.
   function closeAllDialogs(except) {
-    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog].forEach((d) => {
+    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog].forEach((d) => {
       if (d && d !== except && d.open) d.close();
     });
   }
@@ -163,6 +169,13 @@
     document.getElementById("closeNofDocViewerBtn").addEventListener("click", () => nofDocViewerDialog.close());
     document.getElementById("nofDocViewerPrev").addEventListener("click", () => stepNofDocViewer(-1));
     document.getElementById("nofDocViewerNext").addEventListener("click", () => stepNofDocViewer(1));
+
+    document.getElementById("closeLevelBtn").addEventListener("click", () => levelDialog.close());
+    document.getElementById("exportLevelBtn").addEventListener("click", handleExportLevelAssignments);
+    levelDialog.addEventListener("close", () => {
+      renderProjectList();
+      renderActiveProject();
+    });
 
     renderProjectList();
     renderActiveProject();
@@ -518,6 +531,10 @@
 
     if (item.id === "act-1") {
       wrap.appendChild(renderOpportunityFormAffordance(project));
+    }
+
+    if (item.id === "act-6slevel" || item.id === "act-bidpkgs") {
+      wrap.appendChild(renderLevelAssignmentsAffordance(project));
     }
 
     if (item.id === "act-kickoff") {
@@ -1095,6 +1112,373 @@
   function formatTimeHHMM(hhmm) {
     const [hh, mm] = hhmm.split(":").map(Number);
     return new Date(2000, 0, 1, hh, mm).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+
+  // ---------- 6S Level Assignments / Bid Packages ----------
+  // A trade (bid package) only "counts" once it has a Leveler assigned — most projects won't
+  // use every trade in the master list, so an unassigned row is just left blank rather than
+  // needing to be explicitly excluded. Coverage is judged against LEVELING_MIN_BIDDERS.
+
+  function getLevelAssignments(project) {
+    project.levelAssignments = project.levelAssignments || { trades: {}, captains: {} };
+    return project.levelAssignments;
+  }
+
+  function countLevelCoverage(project) {
+    const la = getLevelAssignments(project);
+    let totalTrades = 0, assignedTrades = 0, coveredTrades = 0;
+    LEVELING_TRADE_GROUPS.forEach((group) => {
+      group.trades.forEach((t) => {
+        totalTrades++;
+        const row = la.trades[t.bp];
+        if (row && row.leveler) {
+          assignedTrades++;
+          if ((row.confirmedBidders || 0) >= LEVELING_MIN_BIDDERS) coveredTrades++;
+        }
+      });
+    });
+    return { totalTrades, assignedTrades, coveredTrades };
+  }
+
+  // The people assigned across every trade (as Leveler) and group (as Captain) are, per
+  // Rachel's workflow, the same team that runs the Kickoff Meeting, subcontractor status
+  // correspondence, and Bid/Level Day — so this list doubles as the project's 6S team roster.
+  function getLevelTeam(project) {
+    const la = getLevelAssignments(project);
+    const byName = new Map();
+    function addRole(name, role) {
+      if (!name) return;
+      if (!byName.has(name)) byName.set(name, []);
+      byName.get(name).push(role);
+    }
+    LEVELING_TRADE_GROUPS.forEach((group) => {
+      const captain = la.captains[group.name];
+      if (captain) addRole(captain, `Captain — ${group.name}`);
+      group.trades.forEach((t) => {
+        const row = la.trades[t.bp];
+        if (row && row.leveler) addRole(row.leveler, `Leveler — ${t.trade}`);
+      });
+    });
+    return [...byName.entries()]
+      .map(([name, roles]) => ({ name, roles }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function renderLevelAssignmentsAffordance(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "item-inline-actions";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm";
+    btn.textContent = "Build Level Assignments";
+    btn.addEventListener("click", () => openLevelDialog(project));
+
+    const { assignedTrades, coveredTrades } = countLevelCoverage(project);
+    const hint = document.createElement("span");
+    hint.className = "nof-progress-inline";
+    hint.textContent = assignedTrades > 0
+      ? `${assignedTrades} trade${assignedTrades === 1 ? "" : "s"} assigned, ${coveredTrades}/${assignedTrades} at ${LEVELING_MIN_BIDDERS}+ bidders`
+      : "No trades assigned yet";
+
+    wrap.appendChild(btn);
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function openLevelDialog(project) {
+    closeAllDialogs(levelDialog);
+    levelProjectId = project.id;
+    levelProjectName.textContent = `${project.name} — ${project.location}`;
+    renderLevelBody(project);
+    updateLevelProgressLabel(project);
+    levelDialog.showModal();
+  }
+
+  function updateLevelProgressLabel(project) {
+    const { totalTrades, assignedTrades, coveredTrades } = countLevelCoverage(project);
+    levelProgress.textContent = `${assignedTrades} of ${totalTrades} trades assigned — ` +
+      `${coveredTrades} at ${LEVELING_MIN_BIDDERS}+ confirmed bidders`;
+  }
+
+  function renderLevelBody(project) {
+    levelBody.innerHTML = "";
+    levelBody.appendChild(renderLevelTeamSummary(project));
+    LEVELING_TRADE_GROUPS.forEach((group) => {
+      levelBody.appendChild(renderLevelGroupSection(project, group));
+    });
+  }
+
+  function renderLevelTeamSummary(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "level-team-summary";
+
+    const heading = document.createElement("h4");
+    heading.textContent = "Project 6S Team (auto-built from assignments below)";
+    wrap.appendChild(heading);
+
+    const team = getLevelTeam(project);
+    if (team.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "level-team-empty";
+      empty.textContent = "Assign a Leveler or Captain below and this list fills in — it's the same " +
+        "group to invite to the Kickoff Meeting, keep on subcontractor status correspondence, and have at Bid/Level Day.";
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    const ul = document.createElement("ul");
+    team.forEach((person) => {
+      const li = document.createElement("li");
+      const strong = document.createElement("strong");
+      strong.textContent = person.name;
+      li.appendChild(strong);
+      li.appendChild(document.createTextNode(" — " + person.roles.join(", ")));
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+    return wrap;
+  }
+
+  function renderLevelGroupSection(project, group) {
+    const fragment = document.createDocumentFragment();
+    const la = getLevelAssignments(project);
+
+    const header = document.createElement("div");
+    header.className = "nof-section-title level-group-header";
+
+    const title = document.createElement("span");
+    title.textContent = group.name;
+    header.appendChild(title);
+
+    const captainWrap = document.createElement("label");
+    captainWrap.className = "level-captain";
+    captainWrap.appendChild(document.createTextNode("Captain"));
+    const captainSelect = document.createElement("select");
+    captainSelect.add(new Option("—", ""));
+    NOF_STAFF_OPTIONS.forEach((name) => captainSelect.add(new Option(name, name)));
+    captainSelect.value = la.captains[group.name] || "";
+    captainSelect.addEventListener("change", () => {
+      if (captainSelect.value) la.captains[group.name] = captainSelect.value;
+      else delete la.captains[group.name];
+      saveState();
+      renderLevelTeamSummaryInPlace(project);
+    });
+    captainWrap.appendChild(captainSelect);
+    header.appendChild(captainWrap);
+
+    fragment.appendChild(header);
+
+    const table = document.createElement("table");
+    table.className = "level-table";
+    const thead = document.createElement("thead");
+    thead.innerHTML = "<tr><th>BP#</th><th>Trade</th><th>Leveler</th><th>Confirmed Bidders</th>" +
+      "<th>Trusted Subs Confirmed</th><th>Coverage</th></tr>";
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    group.trades.forEach((t) => tbody.appendChild(renderLevelTradeRow(project, group, t)));
+    table.appendChild(tbody);
+
+    fragment.appendChild(table);
+    return fragment;
+  }
+
+  function renderLevelTradeRow(project, group, t) {
+    const la = getLevelAssignments(project);
+    const row = la.trades[t.bp] || (la.trades[t.bp] = { leveler: "", confirmedBidders: null, trustedSubs: null });
+
+    const tr = document.createElement("tr");
+
+    const bpCell = document.createElement("td");
+    bpCell.className = "level-bp-cell";
+    bpCell.textContent = t.bp;
+    tr.appendChild(bpCell);
+
+    const tradeCell = document.createElement("td");
+    tradeCell.textContent = t.trade;
+    tr.appendChild(tradeCell);
+
+    const levelerCell = document.createElement("td");
+    const levelerSelect = document.createElement("select");
+    levelerSelect.add(new Option("— Unassigned —", ""));
+    NOF_STAFF_OPTIONS.forEach((name) => levelerSelect.add(new Option(name, name)));
+    levelerSelect.value = row.leveler || "";
+    levelerCell.appendChild(levelerSelect);
+    tr.appendChild(levelerCell);
+
+    const bidderCell = document.createElement("td");
+    const bidderInput = document.createElement("input");
+    bidderInput.type = "number";
+    bidderInput.min = "0";
+    bidderInput.value = row.confirmedBidders === null || row.confirmedBidders === undefined ? "" : row.confirmedBidders;
+    bidderCell.appendChild(bidderInput);
+    tr.appendChild(bidderCell);
+
+    const subsCell = document.createElement("td");
+    const subsInput = document.createElement("input");
+    subsInput.type = "number";
+    subsInput.min = "0";
+    subsInput.value = row.trustedSubs === null || row.trustedSubs === undefined ? "" : row.trustedSubs;
+    subsCell.appendChild(subsInput);
+    tr.appendChild(subsCell);
+
+    const coverageCell = document.createElement("td");
+    tr.appendChild(coverageCell);
+
+    function refreshCoverage() {
+      coverageCell.innerHTML = "";
+      if (!row.leveler) return;
+      const confirmed = row.confirmedBidders || 0;
+      const chip = document.createElement("span");
+      if (confirmed >= LEVELING_MIN_BIDDERS) {
+        chip.className = "coverage-chip covered";
+        chip.textContent = "Covered";
+      } else {
+        chip.className = "coverage-chip short";
+        chip.textContent = `Need ${LEVELING_MIN_BIDDERS - confirmed} more`;
+      }
+      coverageCell.appendChild(chip);
+    }
+    refreshCoverage();
+
+    levelerSelect.addEventListener("change", () => {
+      row.leveler = levelerSelect.value;
+      saveState();
+      refreshCoverage();
+      renderLevelTeamSummaryInPlace(project);
+      updateLevelProgressLabel(project);
+    });
+    bidderInput.addEventListener("input", () => {
+      row.confirmedBidders = bidderInput.value === "" ? null : Number(bidderInput.value);
+      saveState();
+      refreshCoverage();
+      updateLevelProgressLabel(project);
+    });
+    subsInput.addEventListener("input", () => {
+      row.trustedSubs = subsInput.value === "" ? null : Number(subsInput.value);
+      saveState();
+    });
+
+    return tr;
+  }
+
+  // Swaps just the team-summary block in place, rather than re-rendering the whole dialog
+  // body (which would blow away focus/scroll position mid-edit of a captain dropdown).
+  function renderLevelTeamSummaryInPlace(project) {
+    const old = levelBody.querySelector(".level-team-summary");
+    if (!old) return;
+    old.replaceWith(renderLevelTeamSummary(project));
+  }
+
+  async function handleExportLevelAssignments() {
+    const project = state.projects.find((p) => p.id === levelProjectId);
+    if (!project) return;
+
+    if (typeof ExcelJS === "undefined") {
+      alert("The Excel export library didn't load (check your internet connection) — your entries are still saved in the app.");
+      return;
+    }
+
+    const exportBtn = document.getElementById("exportLevelBtn");
+    const originalLabel = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = "Exporting…";
+
+    try {
+      const blob = await buildLevelAssignmentsWorkbookBlob(project);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${sanitizeFilename(project.name)}_Level_Assignments.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = originalLabel;
+    }
+  }
+
+  async function buildLevelAssignmentsWorkbookBlob(project) {
+    const la = getLevelAssignments(project);
+    const DARK = "FF222222";
+    const GREY = "FF9EA1A2";
+    const THIN = { style: "thin", color: { argb: "FFD9D9D9" } };
+    const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Scorpio Preconstruction — CM Startup Board";
+    wb.created = new Date();
+
+    const ws = wb.addWorksheet("Level Assignments", { views: [{ showGridLines: false }] });
+    ws.columns = [
+      { width: 2 }, { width: 12 }, { width: 30 }, { width: 22 },
+      { width: 18 }, { width: 20 }, { width: 22 }, { width: 2 },
+    ];
+
+    ws.mergeCells("B1:G1");
+    ws.getCell("B1").value = `${project.name} — 6S Level Assignments & Bid Packages`;
+    ws.getCell("B1").font = { bold: true, size: 13, color: { argb: "FFFFFFFF" } };
+    ws.getCell("B1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK } };
+    ws.getCell("B1").alignment = { vertical: "middle", indent: 1 };
+    ws.getRow(1).height = 22;
+
+    let row = 3;
+    LEVELING_TRADE_GROUPS.forEach((group) => {
+      ws.mergeCells(`B${row}:C${row}`);
+      const groupCell = ws.getCell(`B${row}`);
+      groupCell.value = group.name;
+      groupCell.font = { bold: true, size: 10.5, color: { argb: "FFFFFFFF" } };
+      groupCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK } };
+      groupCell.alignment = { vertical: "middle", indent: 1 };
+      ws.getCell(`D${row}`).value = "Captain";
+      ws.getCell(`D${row}`).font = { bold: true, size: 9.5, color: { argb: "FF1A2230" } };
+      ws.mergeCells(`E${row}:G${row}`);
+      ws.getCell(`E${row}`).value = la.captains[group.name] || "";
+      ws.getCell(`E${row}`).font = { size: 10 };
+      row++;
+
+      const headers = ["BP#", "Trade", "Leveler", "Confirmed Bidders", "Trusted Subs Confirmed"];
+      headers.forEach((h, i) => {
+        const cell = ws.getCell(row, 2 + i);
+        cell.value = h;
+        cell.font = { bold: true, size: 9, color: { argb: "FF1A2230" } };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GREY } };
+        cell.border = BORDER;
+      });
+      row++;
+
+      group.trades.forEach((t) => {
+        const r = la.trades[t.bp] || {};
+        const values = [t.bp, t.trade, r.leveler || "", r.confirmedBidders ?? "", r.trustedSubs ?? ""];
+        values.forEach((v, i) => {
+          const cell = ws.getCell(row, 2 + i);
+          cell.value = v;
+          cell.font = { size: 10 };
+          cell.border = BORDER;
+        });
+        row++;
+      });
+      row++;
+    });
+
+    row++;
+    ws.getCell(`B${row}`).value = "Project 6S Team";
+    ws.getCell(`B${row}`).font = { bold: true, size: 11 };
+    row++;
+    getLevelTeam(project).forEach((person) => {
+      ws.getCell(`B${row}`).value = person.name;
+      ws.getCell(`B${row}`).font = { bold: true, size: 10 };
+      ws.mergeCells(`C${row}:G${row}`);
+      ws.getCell(`C${row}`).value = person.roles.join(", ");
+      ws.getCell(`C${row}`).font = { size: 9.5 };
+      row++;
+    });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
 
   // ---------- New Opportunity Form ----------
