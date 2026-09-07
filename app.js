@@ -173,14 +173,19 @@
     { fieldId: "projectSqFt", labels: ["Gross Square Footage", "Gross Floor Area", "Building Square Footage", "GSF"], type: "number" },
 
     { fieldId: "ownerCompany", labels: ["Owner", "Client"] },
-    { fieldId: "ownerContactName", labels: ["Owner Contact", "Owner's Contact", "Owner Representative", "Owner's Representative"] },
+    { fieldId: "ownerContactName", labels: ["Owner Contact", "Owner's Contact", "Owner Name"] },
     { fieldId: "ownerAddress", labels: ["Owner Address"] },
+    { fieldId: "ownerCityStateZip", labels: ["Owner City, State ZIP", "Owner City State Zip", "Owner City/State/Zip"] },
     { fieldId: "ownerPhone", labels: ["Owner Phone", "Owner Tel", "Owner Telephone"] },
     { fieldId: "ownerEmail", labels: ["Owner Email"] },
+    { fieldId: "ownersRepName", labels: ["Owner's Representative", "Owner Representative", "Owner's Rep", "Owner Rep"] },
+    { fieldId: "ownersRepPhone", labels: ["Owner's Rep Phone", "Owner Rep Phone", "Owner's Representative Phone"] },
+    { fieldId: "ownersRepEmail", labels: ["Owner's Rep Email", "Owner Rep Email", "Owner's Representative Email"] },
 
     { fieldId: "architectCo", labels: ["Architect", "Architect of Record"] },
-    { fieldId: "architectContactName", labels: ["Architect Contact", "Project Architect", "Architect of Record Contact"] },
+    { fieldId: "architectContactName", labels: ["Architect Contact", "Project Architect", "Architect of Record Contact", "Architect Name"] },
     { fieldId: "architectAddress", labels: ["Architect Address"] },
+    { fieldId: "architectCityStateZip", labels: ["Architect City, State ZIP", "Architect City State Zip", "Architect City/State/Zip"] },
     { fieldId: "architectPhone", labels: ["Architect Phone", "Architect Tel", "Architect Telephone"] },
     { fieldId: "architectEmail", labels: ["Architect Email"] },
 
