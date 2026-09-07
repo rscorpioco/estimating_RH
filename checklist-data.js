@@ -51,8 +51,12 @@ const CHECKLIST_PHASES = [
         text: "Create the project in Destini take-off software (only once documentation efficiencies are done)",
         sub: [{ text: "Roughly estimate the cost of Staffing & GCs" }],
       },
-      { id: "act-6slevel", group: "2 · High-Level Analysis (While Waiting on ATF)", text: "Create 6S Level Assignments" },
-      { id: "act-bidpkgs", group: "2 · High-Level Analysis (While Waiting on ATF)", text: "Create Bid Packages" },
+      {
+        id: "act-6slevel",
+        group: "2 · High-Level Analysis (While Waiting on ATF)",
+        text: "Create 6S Level Assignments & Bid Packages",
+        sub: [{ text: "Trades are grouped by 6S category (Site, Structure, Systems, Skin, Specialties, Surfaces) off the Leveling Assignments workbook — add or remove bid package lines per category as this project needs" }],
+      },
       {
         id: "act-rfideadline",
         group: "2 · High-Level Analysis (While Waiting on ATF)",

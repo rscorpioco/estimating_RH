@@ -793,6 +793,18 @@ dialog.level-dialog {
 .coverage-chip.short { background: #faedd6; color: var(--amber); }
 .coverage-chip.none { background: #eef1f5; color: var(--text-muted); }
 
+.level-remove-bp-btn {
+  font-size: 11px;
+  padding: 3px 8px;
+  color: var(--red);
+  border-color: var(--red);
+  white-space: nowrap;
+}
+
+.level-add-bp-btn {
+  margin: 6px 0 18px;
+}
+
 .level-team-summary {
   background: #eef1f5;
   border: 1px solid var(--border);

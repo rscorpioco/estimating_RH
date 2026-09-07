@@ -545,7 +545,7 @@
       wrap.appendChild(renderOpportunityFormAffordance(project));
     }
 
-    if (item.id === "act-6slevel" || item.id === "act-bidpkgs") {
+    if (item.id === "act-6slevel") {
       wrap.appendChild(renderLevelAssignmentsAffordance(project));
     }
 
@@ -1258,15 +1258,61 @@
   // needing to be explicitly excluded. Coverage is judged against LEVELING_MIN_BIDDERS.
 
   function getLevelAssignments(project) {
-    project.levelAssignments = project.levelAssignments || { trades: {}, captains: {} };
+    project.levelAssignments = project.levelAssignments || { trades: {}, captains: {}, removedBps: [], customTrades: {} };
+    project.levelAssignments.removedBps = project.levelAssignments.removedBps || [];
+    project.levelAssignments.customTrades = project.levelAssignments.customTrades || {};
     return project.levelAssignments;
+  }
+
+  // The master LEVELING_TRADE_GROUPS list (from the Leveling Assignments workbook) is shared
+  // across every project — a project customizes it by hiding a default bid package line
+  // (removedBps) or adding one of its own (customTrades), never by editing the master list.
+  function getGroupTrades(project, group) {
+    const la = getLevelAssignments(project);
+    const removed = new Set(la.removedBps);
+    const defaults = group.trades.filter((t) => !removed.has(t.bp)).map((t) => ({ bp: t.bp, trade: t.trade, custom: false }));
+    const custom = (la.customTrades[group.name] || []).map((t) => ({ bp: t.bp, trade: t.trade, custom: true }));
+    return [...defaults, ...custom];
+  }
+
+  function addBidPackageLine(project, group) {
+    const trade = prompt(`New bid package / trade name to add under ${group.name}:`);
+    if (!trade || !trade.trim()) return;
+    const la = getLevelAssignments(project);
+    const list = la.customTrades[group.name] || (la.customTrades[group.name] = []);
+    const existingBps = new Set([...group.trades.map((t) => t.bp), ...list.map((t) => t.bp)]);
+    let n = list.length + 1;
+    let bp = `${group.name.slice(0, 1).toUpperCase()}-CUSTOM-${n}`;
+    while (existingBps.has(bp)) { n++; bp = `${group.name.slice(0, 1).toUpperCase()}-CUSTOM-${n}`; }
+    list.push({ bp, trade: trade.trim() });
+    saveState();
+    renderLevelBody(project);
+    updateLevelProgressLabel(project);
+  }
+
+  function removeBidPackageLine(project, group, t) {
+    if (!confirm(`Remove "${t.trade}" from ${group.name}? Any leveler/bidder data entered for this line will be cleared.`)) return;
+    const la = getLevelAssignments(project);
+    if (t.custom) {
+      const list = la.customTrades[group.name];
+      if (list) {
+        const idx = list.findIndex((x) => x.bp === t.bp);
+        if (idx >= 0) list.splice(idx, 1);
+      }
+    } else if (!la.removedBps.includes(t.bp)) {
+      la.removedBps.push(t.bp);
+    }
+    delete la.trades[t.bp];
+    saveState();
+    renderLevelBody(project);
+    updateLevelProgressLabel(project);
   }
 
   function countLevelCoverage(project) {
     const la = getLevelAssignments(project);
     let totalTrades = 0, assignedTrades = 0, coveredTrades = 0;
     LEVELING_TRADE_GROUPS.forEach((group) => {
-      group.trades.forEach((t) => {
+      getGroupTrades(project, group).forEach((t) => {
         totalTrades++;
         const row = la.trades[t.bp];
         if (row && row.leveler) {
@@ -1292,7 +1338,7 @@
     LEVELING_TRADE_GROUPS.forEach((group) => {
       const captain = la.captains[group.name];
       if (captain) addRole(captain, `Captain — ${group.name}`);
-      group.trades.forEach((t) => {
+      getGroupTrades(project, group).forEach((t) => {
         const row = la.trades[t.bp];
         if (row && row.leveler) addRole(row.leveler, `Leveler — ${t.trade}`);
       });
@@ -1418,14 +1464,22 @@
     table.className = "level-table";
     const thead = document.createElement("thead");
     thead.innerHTML = "<tr><th>BP#</th><th>Trade</th><th>Leveler</th><th>Confirmed Bidders</th>" +
-      "<th>Trusted Subs Confirmed</th><th>Coverage</th></tr>";
+      "<th>Trusted Subs Confirmed</th><th>Coverage</th><th></th></tr>";
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
-    group.trades.forEach((t) => tbody.appendChild(renderLevelTradeRow(project, group, t)));
+    getGroupTrades(project, group).forEach((t) => tbody.appendChild(renderLevelTradeRow(project, group, t)));
     table.appendChild(tbody);
 
     fragment.appendChild(table);
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "btn btn-sm level-add-bp-btn";
+    addBtn.textContent = "+ Add Bid Package Line";
+    addBtn.addEventListener("click", () => addBidPackageLine(project, group));
+    fragment.appendChild(addBtn);
+
     return fragment;
   }
 
@@ -1511,6 +1565,16 @@
       row.trustedSubs = subsInput.value === "" ? null : Number(subsInput.value);
       saveState();
     });
+
+    const removeCell = document.createElement("td");
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn btn-sm level-remove-bp-btn";
+    removeBtn.textContent = "Remove";
+    removeBtn.title = t.custom ? "Remove this bid package line" : "Hide this bid package line for this project";
+    removeBtn.addEventListener("click", () => removeBidPackageLine(project, group, t));
+    removeCell.appendChild(removeBtn);
+    tr.appendChild(removeCell);
 
     return tr;
   }
@@ -1602,7 +1666,7 @@
       });
       row++;
 
-      group.trades.forEach((t) => {
+      getGroupTrades(project, group).forEach((t) => {
         const r = la.trades[t.bp] || {};
         const values = [t.bp, t.trade, r.leveler || "", r.confirmedBidders ?? "", r.trustedSubs ?? ""];
         values.forEach((v, i) => {
@@ -1855,11 +1919,16 @@
 
     wrap.appendChild(row);
 
+    const bluebeamNote = document.createElement("div");
+    bluebeamNote.className = "nof-doc-note";
+    bluebeamNote.textContent = "Uploading here (single file or multiple) only combines pages into one PDF — it doesn't add " +
+      "Bluebeam bookmarks or page labels, so that part still has to be done by hand in Bluebeam.";
+    wrap.appendChild(bluebeamNote);
+
     if (doc && doc.sourceNames.length > 1) {
       const mergedNote = document.createElement("div");
       mergedNote.className = "nof-doc-note";
-      mergedNote.textContent = `Merged from ${doc.sourceNames.length} files, in this order: ${doc.sourceNames.join(", ")}. ` +
-        `This only combines pages — it doesn't add Bluebeam bookmarks or page labels, so that part is still manual.`;
+      mergedNote.textContent = `Merged from ${doc.sourceNames.length} files, in this order: ${doc.sourceNames.join(", ")}.`;
       wrap.appendChild(mergedNote);
     }
 
