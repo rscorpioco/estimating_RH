@@ -171,13 +171,34 @@
   const NOF_EXTRACTION_RULES = [
     { fieldId: "jobsiteAddress", labels: ["Project Address", "Site Address", "Property Address", "Project Location"] },
     { fieldId: "projectSqFt", labels: ["Gross Square Footage", "Gross Floor Area", "Building Square Footage", "GSF"], type: "number" },
+
     { fieldId: "ownerCompany", labels: ["Owner", "Client"] },
+    { fieldId: "ownerContactName", labels: ["Owner Contact", "Owner's Contact", "Owner Representative", "Owner's Representative"] },
+    { fieldId: "ownerAddress", labels: ["Owner Address"] },
+    { fieldId: "ownerPhone", labels: ["Owner Phone", "Owner Tel", "Owner Telephone"] },
+    { fieldId: "ownerEmail", labels: ["Owner Email"] },
+
     { fieldId: "architectCo", labels: ["Architect", "Architect of Record"] },
+    { fieldId: "architectContactName", labels: ["Architect Contact", "Project Architect", "Architect of Record Contact"] },
+    { fieldId: "architectAddress", labels: ["Architect Address"] },
+    { fieldId: "architectPhone", labels: ["Architect Phone", "Architect Tel", "Architect Telephone"] },
+    { fieldId: "architectEmail", labels: ["Architect Email"] },
+
     { fieldId: "civilEngineerCo", labels: ["Civil Engineer"] },
+    { fieldId: "civilEngineerName", labels: ["Civil Engineer Contact", "Civil Contact"] },
+
     { fieldId: "structuralEngineerCo", labels: ["Structural Engineer"] },
+    { fieldId: "structuralEngineerName", labels: ["Structural Engineer Contact", "Structural Contact"] },
+
     { fieldId: "mepfpEngineerCo", labels: ["MEP Engineer", "MEPFP Engineer", "Mechanical Engineer"] },
+    { fieldId: "mepfpEngineerName", labels: ["MEP Engineer Contact", "MEPFP Engineer Contact", "Mechanical Engineer Contact"] },
+
     { fieldId: "landscapeArchitectCo", labels: ["Landscape Architect"] },
+    { fieldId: "landscapeArchitectName", labels: ["Landscape Architect Contact", "Landscape Contact"] },
+
     { fieldId: "interiorDesignerCo", labels: ["Interior Designer"] },
+    { fieldId: "interiorDesignerName", labels: ["Interior Designer Contact", "Interior Design Contact"] },
+
     { fieldId: "estStartDate", labels: ["Date of Commencement", "Commencement Date", "Start Date"], type: "date" },
     { fieldId: "estCompletionDate", labels: ["Date of Substantial Completion", "Substantial Completion Date", "Completion Date"], type: "date" },
     { fieldId: "bidDate", labels: ["Bid Date", "Date of Bid"], type: "date" },
