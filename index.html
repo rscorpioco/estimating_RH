@@ -169,6 +169,20 @@
   </form>
 </dialog>
 
+<!-- Replaces window.alert/confirm/prompt everywhere in the app — those native dialogs are
+     silently no-ops when this page runs inside a sandboxed iframe (e.g. embedded/preview
+     contexts), which made things like "Remove" and "+ Add" buttons look broken. -->
+<dialog id="miniDialog" class="mini-dialog">
+  <form method="dialog" id="miniDialogForm">
+    <p id="miniDialogMessage"></p>
+    <input type="text" id="miniDialogInput" />
+    <div class="dialog-actions">
+      <button type="submit" value="cancel" class="btn" id="miniDialogCancelBtn">Cancel</button>
+      <button type="submit" value="ok" class="btn btn-primary" id="miniDialogOkBtn">OK</button>
+    </div>
+  </form>
+</dialog>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script type="module">

@@ -51,6 +51,49 @@
   const teamDialog = document.getElementById("teamDialog");
   const teamBody = document.getElementById("teamBody");
 
+  const miniDialog = document.getElementById("miniDialog");
+  const miniDialogForm = document.getElementById("miniDialogForm");
+  const miniDialogMessage = document.getElementById("miniDialogMessage");
+  const miniDialogInput = document.getElementById("miniDialogInput");
+  const miniDialogCancelBtn = document.getElementById("miniDialogCancelBtn");
+  const miniDialogOkBtn = document.getElementById("miniDialogOkBtn");
+
+  // Stand-in for window.alert/confirm/prompt — those are silently no-ops when this page runs
+  // inside a sandboxed iframe (no "allow-modals"), which made buttons like "Remove" and
+  // "+ Add" across the app look like they were doing nothing. Nests on top of whatever dialog
+  // is already open, the same way the doc-viewer dialogs nest on top of theirs.
+  function miniDialogAsk({ message, withInput = false, placeholder = "", defaultValue = "", okLabel = "OK", showCancel = true, danger = false }) {
+    return new Promise((resolve) => {
+      miniDialogMessage.textContent = message;
+      miniDialogInput.hidden = !withInput;
+      miniDialogInput.placeholder = placeholder;
+      miniDialogInput.value = defaultValue;
+      miniDialogOkBtn.textContent = okLabel;
+      miniDialogOkBtn.classList.toggle("btn-danger", danger);
+      miniDialogCancelBtn.hidden = !showCancel;
+      miniDialog.returnValue = "";
+      miniDialog.showModal();
+      if (withInput) { miniDialogInput.focus(); miniDialogInput.select(); }
+
+      function onClose() {
+        miniDialog.removeEventListener("close", onClose);
+        const ok = miniDialog.returnValue === "ok";
+        resolve(ok ? (withInput ? miniDialogInput.value : true) : (withInput ? null : false));
+      }
+      miniDialog.addEventListener("close", onClose);
+    });
+  }
+
+  function miniAlert(message) {
+    return miniDialogAsk({ message, showCancel: false });
+  }
+  function miniConfirm(message, { okLabel = "OK", danger = false } = {}) {
+    return miniDialogAsk({ message, okLabel, danger });
+  }
+  function miniPrompt(message, { placeholder = "", defaultValue = "", okLabel = "OK" } = {}) {
+    return miniDialogAsk({ message, withInput: true, placeholder, defaultValue, okLabel });
+  }
+
   let editingProjectId = null;
   let opportunityProjectId = null;
   let kickoffProjectId = null;
@@ -83,6 +126,41 @@
     deliveryMethodNOF: (project) => (project.deliveryMethod === "Hard Bid" ? "Hard Bid" : project.deliveryMethod ? "CM" : ""),
     pcPoManager: (project) => (NOF_STAFF_OPTIONS.includes(project.teamLead) ? project.teamLead : ""),
     bidDate: (project) => project.bidDueDate || "",
+  };
+
+  function joinCoAndName(co, name) {
+    if (co && name) return `${co} (${name})`;
+    return co || name || "";
+  }
+
+  // The Kickoff / Bid Day Package asks for the same AEC info as the New Opportunity Form's
+  // Owner/AEC section, just condensed to one line per discipline — so it's auto-filled from
+  // the opportunity data (Rachel's ask: fill it out once, not twice) using the same
+  // linked/badge/override pattern as NOF_LINKED_FIELDS above.
+  const KICKOFF_LINKED_FIELDS = {
+    projectAddress: (project) => {
+      const data = project.opportunity || {};
+      return [data.jobsiteAddress, data.jobsiteCityStateZip].filter(Boolean).join(", ");
+    },
+    architect: (project) => {
+      const data = project.opportunity || {};
+      return joinCoAndName(data.architectCo, data.architectContactName);
+    },
+    structural: (project) => {
+      const data = project.opportunity || {};
+      return joinCoAndName(data.structuralEngineerCo, data.structuralEngineerName);
+    },
+    mep: (project) => {
+      const data = project.opportunity || {};
+      return joinCoAndName(data.mepfpEngineerCo, data.mepfpEngineerName);
+    },
+    civilLandscape: (project) => {
+      const data = project.opportunity || {};
+      const civil = joinCoAndName(data.civilEngineerCo, data.civilEngineerName);
+      const landscape = joinCoAndName(data.landscapeArchitectCo, data.landscapeArchitectName);
+      if (civil && landscape) return `Civil: ${civil} / Landscape: ${landscape}`;
+      return civil || landscape || "";
+    },
   };
 
   // Fields we attempt to pull out of the uploaded conformed set via a best-effort text scan
@@ -268,10 +346,11 @@
     renderActiveProject();
   }
 
-  function deleteProject(projectId) {
+  async function deleteProject(projectId) {
     const project = state.projects.find((p) => p.id === projectId);
     if (!project) return;
-    if (!confirm(`Delete "${project.name}"? This cannot be undone.`)) return;
+    const ok = await miniConfirm(`Delete "${project.name}"? This cannot be undone.`, { okLabel: "Delete", danger: true });
+    if (!ok) return;
     state.projects = state.projects.filter((p) => p.id !== projectId);
     if (state.activeProjectId === projectId) {
       state.activeProjectId = state.projects.length ? state.projects[0].id : null;
@@ -742,10 +821,23 @@
     return wrap;
   }
 
+  function applyKickoffDefaults(project) {
+    project.kickoffPackage = project.kickoffPackage || {};
+    const data = project.kickoffPackage;
+    data._linked = data._linked || {};
+    Object.keys(KICKOFF_LINKED_FIELDS).forEach((id) => {
+      if (data[id] === undefined || data._linked[id]) {
+        data[id] = KICKOFF_LINKED_FIELDS[id](project);
+        data._linked[id] = true;
+      }
+    });
+  }
+
   function openKickoffDialog(project) {
     closeAllDialogs(kickoffDialog);
     kickoffProjectId = project.id;
-    project.kickoffPackage = project.kickoffPackage || {};
+    applyKickoffDefaults(project);
+    saveState();
     const levelOrBid = project.deliveryMethod === "Hard Bid" ? "Bid Day" : "Level Day";
     kickoffDialogTitle.textContent = levelOrBid + " Package";
     kickoffProjectName.textContent = `${project.name} — ${project.location}`;
@@ -823,7 +915,7 @@
         status.textContent = file.name;
       } catch (err) {
         status.textContent = "Couldn't read that file";
-        alert("Couldn't read that PDF: " + (err && err.message ? err.message : err));
+        await miniAlert("Couldn't read that PDF: " + (err && err.message ? err.message : err));
       }
       updateKickoffProgressLabel(project);
       renderProjectList();
@@ -963,12 +1055,36 @@
     labelText.textContent = field.label;
     label.appendChild(labelText);
 
+    const isLinkable = !!KICKOFF_LINKED_FIELDS[field.id];
+    let autoBadge = null;
+    if (isLinkable) {
+      autoBadge = document.createElement("span");
+      labelText.appendChild(autoBadge);
+    }
+
+    function refreshBadge() {
+      if (!autoBadge) return;
+      if (data._linked && data._linked[field.id]) {
+        autoBadge.className = "nof-auto-badge";
+        autoBadge.textContent = "Auto";
+        autoBadge.title = "Filled in from the New Opportunity Form's Owner/AEC section — edit this field to override.";
+        autoBadge.hidden = false;
+      } else {
+        autoBadge.hidden = true;
+      }
+    }
+    refreshBadge();
+
     const input = document.createElement(field.type === "textarea" ? "textarea" : "input");
     if (field.type !== "textarea") input.type = field.type;
     input.value = data[field.id] || "";
     input.id = "kickoff_" + field.id;
     input.addEventListener("input", () => {
       data[field.id] = input.value;
+      if (isLinkable && data._linked && data._linked[field.id]) {
+        data._linked[field.id] = false;
+        refreshBadge();
+      }
       saveState();
       updateKickoffProgressLabel(project);
     });
@@ -1000,7 +1116,7 @@
     if (!project) return;
 
     if (typeof PDFLib === "undefined") {
-      alert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
+      await miniAlert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
       return;
     }
 
@@ -1021,7 +1137,7 @@
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
     } catch (err) {
-      alert("Couldn't build the package: " + (err && err.message ? err.message : err));
+      await miniAlert("Couldn't build the package: " + (err && err.message ? err.message : err));
     } finally {
       exportBtn.disabled = false;
       exportBtn.textContent = originalLabel;
@@ -1218,8 +1334,9 @@
     removeBtn.type = "button";
     removeBtn.className = "btn btn-danger btn-sm";
     removeBtn.textContent = "Remove";
-    removeBtn.addEventListener("click", () => {
-      if (!confirm(`Remove ${person.name || "this person"} from the roster?`)) return;
+    removeBtn.addEventListener("click", async () => {
+      const ok = await miniConfirm(`Remove ${person.name || "this person"} from the roster?`, { okLabel: "Remove", danger: true });
+      if (!ok) return;
       const idx = people.indexOf(person);
       if (idx !== -1) people.splice(idx, 1);
       saveState();
@@ -1241,10 +1358,10 @@
   // Quick-add used from the Level Assignments dropdowns — adds straight to the current
   // project's office roster (or Precon) without leaving the dialog, per Rachel's ask to be
   // able to add someone manually right where she's assigning them.
-  function quickAddRosterPerson(project) {
-    const name = prompt("Name of the new team member:");
+  async function quickAddRosterPerson(project) {
+    const name = await miniPrompt("Name of the new team member:");
     if (!name || !name.trim()) return null;
-    const email = prompt(`Email for ${name.trim()} (optional — leave blank to skip):`) || "";
+    const email = (await miniPrompt(`Email for ${name.trim()} (optional — leave blank to skip):`)) || "";
     const targetList = state.teamRoster.byOffice[project.location] || (state.teamRoster.byOffice[project.location] = []);
     const person = { name: name.trim(), title: "", phone: "", email: email.trim() };
     targetList.push(person);
@@ -1275,8 +1392,8 @@
     return [...defaults, ...custom];
   }
 
-  function addBidPackageLine(project, group) {
-    const trade = prompt(`New bid package / trade name to add under ${group.name}:`);
+  async function addBidPackageLine(project, group) {
+    const trade = await miniPrompt(`New bid package / trade name to add under ${group.name}:`);
     if (!trade || !trade.trim()) return;
     const la = getLevelAssignments(project);
     const list = la.customTrades[group.name] || (la.customTrades[group.name] = []);
@@ -1290,8 +1407,9 @@
     updateLevelProgressLabel(project);
   }
 
-  function removeBidPackageLine(project, group, t) {
-    if (!confirm(`Remove "${t.trade}" from ${group.name}? Any leveler/bidder data entered for this line will be cleared.`)) return;
+  async function removeBidPackageLine(project, group, t) {
+    const ok = await miniConfirm(`Remove "${t.trade}" from ${group.name}? Any leveler/bidder data entered for this line will be cleared.`, { okLabel: "Remove", danger: true });
+    if (!ok) return;
     const la = getLevelAssignments(project);
     if (t.custom) {
       const list = la.customTrades[group.name];
@@ -1441,9 +1559,9 @@
     const captainSelect = document.createElement("select");
     populateAssigneeOptions(captainSelect, project, "—");
     captainSelect.value = la.captains[group.name] || "";
-    captainSelect.addEventListener("change", () => {
+    captainSelect.addEventListener("change", async () => {
       if (captainSelect.value === LEVEL_ADD_PERSON_VALUE) {
-        const person = quickAddRosterPerson(project);
+        const person = await quickAddRosterPerson(project);
         if (person) la.captains[group.name] = person.name;
         else { captainSelect.value = la.captains[group.name] || ""; return; }
         renderLevelBody(project);
@@ -1540,9 +1658,9 @@
     }
     refreshCoverage();
 
-    levelerSelect.addEventListener("change", () => {
+    levelerSelect.addEventListener("change", async () => {
       if (levelerSelect.value === LEVEL_ADD_PERSON_VALUE) {
-        const person = quickAddRosterPerson(project);
+        const person = await quickAddRosterPerson(project);
         if (person) row.leveler = person.name;
         else { levelerSelect.value = row.leveler || ""; return; }
         renderLevelBody(project);
@@ -1592,7 +1710,7 @@
     if (!project) return;
 
     if (typeof ExcelJS === "undefined") {
-      alert("The Excel export library didn't load (check your internet connection) — your entries are still saved in the app.");
+      await miniAlert("The Excel export library didn't load (check your internet connection) — your entries are still saved in the app.");
       return;
     }
 
@@ -1899,7 +2017,7 @@
       try {
         await processConformedSetUpload(project, files);
       } catch (err) {
-        alert("Couldn't read that PDF: " + (err && err.message ? err.message : err));
+        await miniAlert("Couldn't read that PDF: " + (err && err.message ? err.message : err));
       }
       onUpdate();
     });
@@ -2267,7 +2385,7 @@
     if (!project) return;
 
     if (typeof ExcelJS === "undefined") {
-      alert("The Excel export library didn't load (check your internet connection) — your entries are still saved in the app.");
+      await miniAlert("The Excel export library didn't load (check your internet connection) — your entries are still saved in the app.");
       return;
     }
 

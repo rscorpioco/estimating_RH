@@ -435,6 +435,45 @@ dialog::backdrop { background: rgba(15, 42, 74, 0.45); }
   margin-top: 8px;
 }
 
+/* Custom stand-in for window.alert/confirm/prompt (see index.html comment) */
+dialog.mini-dialog {
+  width: 380px;
+}
+
+.mini-dialog form {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#miniDialogMessage {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+#miniDialogInput {
+  font-size: 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: inherit;
+  color: var(--text);
+}
+
+#miniDialogInput[hidden] {
+  display: none;
+}
+
+#miniDialogOkBtn.btn-danger {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
 /* New Opportunity Form dialog */
 
 .item-inline-actions {
