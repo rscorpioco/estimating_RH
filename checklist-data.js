@@ -460,6 +460,66 @@ const LEVELING_TRADE_GROUPS = [
   ]},
 ];
 
+// Starting values for the editable Team Roster (state.teamRoster) — transcribed from the
+// "Precon"/office roster rows at the bottom of each tab of Scorpio's real Leveling
+// Assignments workbook. Precon is company-wide (assigned on every project regardless of
+// office); each other group is that office's own project team. This is a seed, not a fixed
+// list — it's copied into state on first load and from then on lives in localStorage,
+// editable from the Team Members screen as people join/leave.
+const TEAM_ROSTER_SEED = {
+  precon: [
+    { name: "Ken Brown", title: "Preconstruction Manager", phone: "352-872-5642", email: "ken@scorpioco.com" },
+    { name: "Rachel Hottor", title: "Preconstruction Manager", phone: "352-872-5646", email: "rachel@scorpioco.com" },
+    { name: "Blake Honerbrink", title: "Assistant Preconstruction Manager", phone: "321-441-5692", email: "blake@scorpioco.com" },
+    { name: "Carlos Vazquez", title: "Preconstruction Coordinator", phone: "(407) 495-2810", email: "cvazquez@scorpioco.com" },
+  ],
+  byOffice: {
+    Gainesville: [
+      { name: "Andy Cowart", title: "Project Manager", phone: "352-494-6567", email: "andy@scorpioco.com" },
+      { name: "Bailey Ledvina", title: "Associate Project Manager", phone: "352-281-9424", email: "BLedvina@scorpioco.com" },
+      { name: "Bayley Main", title: "Associate Project Manager", phone: "352-215-9909", email: "bayley@scorpioco.com" },
+      { name: "Blake Burney", title: "Associate Project Manager", phone: "904-239-1469", email: "bburney@scorpioco.com" },
+      { name: "Casie Carlisle", title: "Associate Project Manager", phone: "352-214-6400", email: "casie@scorpioco.com" },
+      { name: "Devin Konopka", title: "Associate Project Manager", phone: "", email: "dkonopka@scorpioco.com" },
+      { name: "Jenna Hollingsworth", title: "Project Manager", phone: "352-213-3234", email: "jenna@scorpioco.com" },
+      { name: "Logan Gertner", title: "Senior Project Manager", phone: "352-284-9911", email: "logan@scorpioco.com" },
+      { name: "Nate Watson", title: "Senior Project Manager", phone: "352-215-3996", email: "nate@scorpioco.com" },
+      { name: "Ryan Stroh", title: "Senior Project Manager", phone: "352-226-3131", email: "ryan@scorpioco.com" },
+      { name: "Lindsey Barber", title: "Associate Project Manager", phone: "", email: "lindsey@scorpioco.com" },
+      { name: "Jason Collins", title: "Associate Project Manager", phone: "", email: "jcollins@scorpioco.com" },
+    ],
+    Orlando: [
+      { name: "Ana Palm", title: "Senior Project Coordinator", phone: "407-341-2454", email: "ana@scorpioco.com" },
+      { name: "Charles Conway", title: "Project Manager", phone: "", email: "charles@scorpioco.com" },
+      { name: "Chris Lewis", title: "Senior Project Manager", phone: "407-284-7499", email: "clewis@scorpioco.com" },
+      { name: "Evan Scruggs", title: "Associate Project Manager", phone: "407-760-6955", email: "evan@scorpioco.com" },
+      { name: "Heather Gerlach", title: "Project Manager", phone: "", email: "hgerlach@scorpioco.com" },
+      { name: "Kyle Trexler", title: "Assistant Project Manager", phone: "407-705-8117", email: "kyle@scorpioco.com" },
+      { name: "Michael Minotti", title: "Project Manager", phone: "407-729-8065", email: "mminotti@scorpioco.com" },
+      { name: "Stephen Scott", title: "Assistant Project Manager", phone: "", email: "sscott@scorpioco.com" },
+    ],
+    Jacksonville: [
+      { name: "Antonio Franzese", title: "Senior Project Manager", phone: "904-403-6212", email: "antonio@scorpioco.com" },
+      { name: "Brandon Hochwender", title: "Associate Project Manager", phone: "304-419-7653", email: "bhochwender@scorpioco.com" },
+      { name: "Nick Sargent", title: "Project Manager", phone: "386-846-2134", email: "nsargent@scorpioco.com" },
+      { name: "Daniel Wellhausen", title: "Assistant Project Manager", phone: "352-222-9088", email: "daniel@scorpioco.com" },
+      { name: "Elma Mesic", title: "Project Coordinator", phone: "904-563-1847", email: "elma@scorpioco.com" },
+      { name: "Spencer Richardson", title: "Assistant Project Manager", phone: "850-879-8131", email: "srichardson@scorpioco.com" },
+    ],
+    Tallahassee: [
+      { name: "Austin Nichols", title: "Project Manager", phone: "352-474-1663", email: "austin@scorpioco.com" },
+      { name: "Landon Howell", title: "Associate Project Manager", phone: "850-254-5008", email: "landon@scorpioco.com" },
+      { name: "Mark Winger", title: "Senior Project Manager", phone: "850-519-1728", email: "mark@scorpioco.com" },
+    ],
+    Ocala: [
+      { name: "Daniel Ramos", title: "Project Manager", phone: "352-213-8553", email: "dramos@scorpioco.com" },
+      { name: "Ed MacLeod", title: "Senior Project Manager", phone: "864-313-8708", email: "emacleod@scorpioco.com" },
+      { name: "Hadlee Slack", title: "Associate Project Manager", phone: "517-270-9501", email: "hadlee@scorpioco.com" },
+      { name: "Jaziel Ortiz", title: "Senior Project Coordinator", phone: "352-284-1181", email: "jaziel@scorpioco.com" },
+    ],
+  },
+};
+
 const NOF_FINANCE_CONTACTS = [
   { region: "Gainesville - Majors", name: "Maegan Jones" },
   { region: "Gainesville - Minors", name: "Heath Locklear" },

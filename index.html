@@ -15,6 +15,7 @@
     </div>
     <button id="newProjectBtn" class="btn btn-primary btn-block">+ New Project</button>
     <div id="projectList" class="project-list"></div>
+    <button id="teamMembersBtn" class="btn btn-block sidebar-secondary-btn">Team Members</button>
   </aside>
 
   <main class="main" id="main">
@@ -90,6 +91,23 @@
     <span class="nof-progress" id="levelProgress"></span>
     <div class="nof-footer-actions">
       <button type="button" class="btn" id="exportLevelBtn">Export .xlsx</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="teamDialog" class="nof-dialog team-dialog">
+  <div class="nof-header">
+    <div>
+      <h2>Team Members</h2>
+      <p class="nof-sub">Precon is on every project; each office roster feeds the Leveler/Captain lists for its own projects.</p>
+    </div>
+    <button type="button" class="btn" id="closeTeamBtn" aria-label="Close">Close</button>
+  </div>
+  <div class="nof-body" id="teamBody"></div>
+  <div class="nof-footer">
+    <span class="nof-progress">Changes save automatically and apply everywhere the roster is used.</span>
+    <div class="nof-footer-actions">
+      <button type="button" class="btn btn-primary" id="closeTeamBtn2">Close</button>
     </div>
   </div>
 </dialog>

@@ -48,6 +48,9 @@
   const levelBody = document.getElementById("levelBody");
   const levelProgress = document.getElementById("levelProgress");
 
+  const teamDialog = document.getElementById("teamDialog");
+  const teamBody = document.getElementById("teamBody");
+
   let editingProjectId = null;
   let opportunityProjectId = null;
   let kickoffProjectId = null;
@@ -113,7 +116,7 @@
   // any other already-open dialog — without this, opening a second one stacks on top of the
   // first, and closing the top one leaves the other sitting there looking "stuck" open.
   function closeAllDialogs(except) {
-    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog].forEach((d) => {
+    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog].forEach((d) => {
       if (d && d !== except && d.open) d.close();
     });
   }
@@ -177,18 +180,27 @@
       renderActiveProject();
     });
 
+    document.getElementById("teamMembersBtn").addEventListener("click", openTeamDialog);
+    document.getElementById("closeTeamBtn").addEventListener("click", () => teamDialog.close());
+    document.getElementById("closeTeamBtn2").addEventListener("click", () => teamDialog.close());
+
     renderProjectList();
     renderActiveProject();
   }
 
   function loadState() {
+    let loaded = null;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
+      if (raw) loaded = JSON.parse(raw);
     } catch (e) {
       console.warn("Failed to load saved state", e);
     }
-    return { projects: [], activeProjectId: null, expandedPhases: {} };
+    if (!loaded) loaded = { projects: [], activeProjectId: null, expandedPhases: {} };
+    // Seed the editable team roster on first run, and for anyone loading state saved before
+    // this feature existed — a deep copy so edits never mutate the seed constant itself.
+    if (!loaded.teamRoster) loaded.teamRoster = JSON.parse(JSON.stringify(TEAM_ROSTER_SEED));
+    return loaded;
   }
 
   function saveState() {
@@ -1114,6 +1126,132 @@
     return new Date(2000, 0, 1, hh, mm).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   }
 
+  // ---------- Team Roster ----------
+  // A company-wide, editable list of people with emails — Precon (everyone on it works every
+  // project, regardless of office) plus one roster per office. This is what feeds the Level
+  // Assignments Leveler/Captain dropdowns, and is the thing to keep current as people join or
+  // leave rather than re-typing names/emails project by project.
+
+  // Precon + the given project's own office roster — the actual pool of people assignable as
+  // Leveler/Captain on this project. Falls back to an empty office list defensively; every
+  // real LOCATIONS entry has a seeded roster, but a hand-edited/older save might not.
+  function getAssignablePeople(project) {
+    const roster = state.teamRoster;
+    const office = (roster.byOffice && roster.byOffice[project.location]) || [];
+    return [...roster.precon, ...office];
+  }
+
+  function findRosterPerson(project, name) {
+    if (!name) return null;
+    return getAssignablePeople(project).find((p) => p.name === name) || null;
+  }
+
+  function openTeamDialog() {
+    closeAllDialogs(teamDialog);
+    renderTeamBody();
+    teamDialog.showModal();
+  }
+
+  function renderTeamBody() {
+    teamBody.innerHTML = "";
+    teamBody.appendChild(renderTeamGroupSection("Precon (every project, every office)", state.teamRoster.precon, null));
+    LOCATIONS.forEach((loc) => {
+      state.teamRoster.byOffice[loc] = state.teamRoster.byOffice[loc] || [];
+      teamBody.appendChild(renderTeamGroupSection(loc, state.teamRoster.byOffice[loc], loc));
+    });
+  }
+
+  // `officeKey` is null for the Precon group (list lives at state.teamRoster.precon) or a
+  // LOCATIONS name for an office group (list lives at state.teamRoster.byOffice[officeKey]).
+  function renderTeamGroupSection(title, people, officeKey) {
+    const fragment = document.createDocumentFragment();
+
+    const header = document.createElement("div");
+    header.className = "nof-section-title";
+    header.textContent = title;
+    fragment.appendChild(header);
+
+    const list = document.createElement("div");
+    list.className = "team-person-list";
+    people.forEach((person) => list.appendChild(renderTeamPersonRow(people, person, officeKey)));
+    fragment.appendChild(list);
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "btn btn-sm";
+    addBtn.textContent = "+ Add Person";
+    addBtn.addEventListener("click", () => {
+      people.push({ name: "", title: "", phone: "", email: "" });
+      saveState();
+      renderTeamBody();
+      const inputs = teamBody.querySelectorAll(".team-person-row:last-child input");
+      if (inputs[0]) inputs[0].focus();
+    });
+    fragment.appendChild(addBtn);
+
+    return fragment;
+  }
+
+  function renderTeamPersonRow(people, person, officeKey) {
+    const row = document.createElement("div");
+    row.className = "team-person-row";
+
+    const fields = [
+      { key: "name", placeholder: "Name" },
+      { key: "title", placeholder: "Title" },
+      { key: "phone", placeholder: "Phone" },
+      { key: "email", placeholder: "Email" },
+    ];
+    fields.forEach((f) => {
+      const input = document.createElement("input");
+      input.type = f.key === "email" ? "email" : "text";
+      input.placeholder = f.placeholder;
+      input.value = person[f.key] || "";
+      input.addEventListener("input", () => {
+        person[f.key] = input.value;
+        saveState();
+      });
+      row.appendChild(input);
+    });
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn btn-danger btn-sm";
+    removeBtn.textContent = "Remove";
+    removeBtn.addEventListener("click", () => {
+      if (!confirm(`Remove ${person.name || "this person"} from the roster?`)) return;
+      const idx = people.indexOf(person);
+      if (idx !== -1) people.splice(idx, 1);
+      saveState();
+      renderTeamBody();
+    });
+    row.appendChild(removeBtn);
+
+    return row;
+  }
+
+  const LEVEL_ADD_PERSON_VALUE = "__add_new__";
+
+  function populateAssigneeOptions(select, project, unassignedLabel) {
+    select.add(new Option(unassignedLabel, ""));
+    getAssignablePeople(project).forEach((p) => select.add(new Option(p.name, p.name)));
+    select.add(new Option("+ Add someone new…", LEVEL_ADD_PERSON_VALUE));
+  }
+
+  // Quick-add used from the Level Assignments dropdowns — adds straight to the current
+  // project's office roster (or Precon) without leaving the dialog, per Rachel's ask to be
+  // able to add someone manually right where she's assigning them.
+  function quickAddRosterPerson(project) {
+    const name = prompt("Name of the new team member:");
+    if (!name || !name.trim()) return null;
+    const email = prompt(`Email for ${name.trim()} (optional — leave blank to skip):`) || "";
+    const targetList = state.teamRoster.byOffice[project.location] || (state.teamRoster.byOffice[project.location] = []);
+    const person = { name: name.trim(), title: "", phone: "", email: email.trim() };
+    targetList.push(person);
+    saveState();
+    return person;
+  }
+
   // ---------- 6S Level Assignments / Bid Packages ----------
   // A trade (bid package) only "counts" once it has a Leveler assigned — most projects won't
   // use every trade in the master list, so an unassigned row is just left blank rather than
@@ -1255,10 +1393,17 @@
     captainWrap.className = "level-captain";
     captainWrap.appendChild(document.createTextNode("Captain"));
     const captainSelect = document.createElement("select");
-    captainSelect.add(new Option("—", ""));
-    NOF_STAFF_OPTIONS.forEach((name) => captainSelect.add(new Option(name, name)));
+    populateAssigneeOptions(captainSelect, project, "—");
     captainSelect.value = la.captains[group.name] || "";
     captainSelect.addEventListener("change", () => {
+      if (captainSelect.value === LEVEL_ADD_PERSON_VALUE) {
+        const person = quickAddRosterPerson(project);
+        if (person) la.captains[group.name] = person.name;
+        else { captainSelect.value = la.captains[group.name] || ""; return; }
+        renderLevelBody(project);
+        updateLevelProgressLabel(project);
+        return;
+      }
       if (captainSelect.value) la.captains[group.name] = captainSelect.value;
       else delete la.captains[group.name];
       saveState();
@@ -1301,8 +1446,7 @@
 
     const levelerCell = document.createElement("td");
     const levelerSelect = document.createElement("select");
-    levelerSelect.add(new Option("— Unassigned —", ""));
-    NOF_STAFF_OPTIONS.forEach((name) => levelerSelect.add(new Option(name, name)));
+    populateAssigneeOptions(levelerSelect, project, "— Unassigned —");
     levelerSelect.value = row.leveler || "";
     levelerCell.appendChild(levelerSelect);
     tr.appendChild(levelerCell);
@@ -1343,6 +1487,14 @@
     refreshCoverage();
 
     levelerSelect.addEventListener("change", () => {
+      if (levelerSelect.value === LEVEL_ADD_PERSON_VALUE) {
+        const person = quickAddRosterPerson(project);
+        if (person) row.leveler = person.name;
+        else { levelerSelect.value = row.leveler || ""; return; }
+        renderLevelBody(project);
+        updateLevelProgressLabel(project);
+        return;
+      }
       row.leveler = levelerSelect.value;
       saveState();
       refreshCoverage();

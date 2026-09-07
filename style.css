@@ -373,6 +373,16 @@ body {
 
 .btn-danger { color: var(--red); }
 
+.sidebar-secondary-btn {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.sidebar-secondary-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 /* Dialog */
 dialog {
   border: none;
@@ -811,6 +821,33 @@ dialog.level-dialog {
 
 .level-team-summary li strong { color: var(--navy); }
 .level-team-empty { color: var(--text-muted); font-size: 12px; }
+
+/* Team Members */
+
+dialog.team-dialog {
+  width: 900px;
+}
+
+.team-person-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.team-person-row {
+  display: grid;
+  grid-template-columns: 1.3fr 1.5fr 1fr 1.5fr 66px;
+  gap: 8px;
+  align-items: center;
+}
+
+.team-person-row input {
+  font-size: 12.5px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
 
 /* Kickoff / Bid Day Package */
 
