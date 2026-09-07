@@ -23,6 +23,7 @@ const CHECKLIST_PHASES = [
         text: "Upload the conformed set (drawings + specifications + ITB) from the architect",
         sub: [
           { text: "Any design stage works — Conceptual, Schematic Design, Design Development, or Construction Documents — the fields pulled are the same" },
+          { text: "Received as separate files? Select all of them at once (drawings, specs, ITB) and they'll be merged into one file automatically — no need to combine them yourself first" },
         ],
       },
       {
@@ -41,6 +42,7 @@ const CHECKLIST_PHASES = [
             sub: [{ text: "Keep the RFI log open to begin tracking anything found" }],
           },
           { text: "Look for niche information such as site visits, sealed bids, bid requirements, RFI deadline, etc." },
+          { text: "The Conformed Set upload above can merge multiple loose files into one PDF, but actual bookmarks/page labels for Destini still have to be added in Bluebeam by hand" },
         ],
       },
       {

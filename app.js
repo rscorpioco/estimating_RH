@@ -1724,9 +1724,33 @@
     return field ? field.label : fieldId;
   }
 
-  async function processConformedSetUpload(project, file) {
+  // Multiple PDFs (drawings, specs, ITB uploaded separately) get merged into one file, in the
+  // order they were selected, before anything else happens — from there on it's handled
+  // exactly like a single conformed-set upload. This does NOT recreate Bluebeam's own
+  // bookmarking/page-labeling — it only concatenates pages — but it does remove the need to
+  // pre-combine files by hand before uploading.
+  async function mergeConformedSetFiles(files) {
+    if (typeof PDFLib === "undefined") throw new Error("The PDF-merging library didn't load — check your internet connection");
+    const { PDFDocument } = PDFLib;
+    const outDoc = await PDFDocument.create();
+    for (const file of files) {
+      const srcBytes = new Uint8Array(await file.arrayBuffer());
+      const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
+      const copiedPages = await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+      copiedPages.forEach((p) => outDoc.addPage(p));
+    }
+    const mergedBytes = await outDoc.save();
+    const mergedName = `Conformed Set (${files.length} files merged).pdf`;
+    return new File([mergedBytes], mergedName, { type: "application/pdf" });
+  }
+
+  async function processConformedSetUpload(project, fileList) {
     const pdfjsLib = await waitForPdfJs();
     if (!pdfjsLib) throw new Error("The PDF-reading library didn't load — check your internet connection");
+
+    const files = Array.from(fileList);
+    const sourceNames = files.map((f) => f.name);
+    const file = files.length > 1 ? await mergeConformedSetFiles(files) : files[0];
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     const pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
@@ -1746,6 +1770,11 @@
       if (current === undefined || current === null || String(current).trim() === "") {
         data[fieldId] = matches[fieldId];
         data._extracted[fieldId] = true;
+        // A field can be both project-linked and extractable (bidDate, from the Bid Due Date —
+        // see NOF_LINKED_FIELDS above). Demote its link once extraction fills it, or the next
+        // applyOpportunityDefaults() call (e.g. opening this same dialog) would stomp the
+        // extracted value back to the project-linked default, most often blanking it again.
+        if (data._linked) data._linked[fieldId] = false;
         matchedFieldIds.push(fieldId);
       }
     });
@@ -1762,6 +1791,7 @@
 
     nofConformedSetDocs.set(project.id, {
       file,
+      sourceNames,
       pdfDoc,
       numPages: pdfDoc.numPages,
       lastExtraction: { matchedFieldIds, hasText: text.trim().length > 0 },
@@ -1789,17 +1819,21 @@
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "application/pdf";
+    input.multiple = true;
+    input.title = "Select multiple files (drawings, specs, ITB) to merge them into one conformed set automatically";
 
     const status = document.createElement("span");
     status.className = "kickoff-upload-status";
-    status.textContent = doc ? `${doc.file.name} (${doc.numPages} page${doc.numPages === 1 ? "" : "s"})` : "No file attached";
+    status.textContent = doc
+      ? `${doc.sourceNames.length > 1 ? doc.sourceNames.join(" + ") : doc.file.name} (${doc.numPages} page${doc.numPages === 1 ? "" : "s"})`
+      : "No file attached";
 
     input.addEventListener("change", async () => {
-      const file = input.files && input.files[0];
-      if (!file) return;
-      status.textContent = "Reading " + file.name + "…";
+      const files = input.files;
+      if (!files || !files.length) return;
+      status.textContent = files.length > 1 ? `Merging ${files.length} files…` : "Reading " + files[0].name + "…";
       try {
-        await processConformedSetUpload(project, file);
+        await processConformedSetUpload(project, files);
       } catch (err) {
         alert("Couldn't read that PDF: " + (err && err.message ? err.message : err));
       }
@@ -1820,6 +1854,14 @@
     }
 
     wrap.appendChild(row);
+
+    if (doc && doc.sourceNames.length > 1) {
+      const mergedNote = document.createElement("div");
+      mergedNote.className = "nof-doc-note";
+      mergedNote.textContent = `Merged from ${doc.sourceNames.length} files, in this order: ${doc.sourceNames.join(", ")}. ` +
+        `This only combines pages — it doesn't add Bluebeam bookmarks or page labels, so that part is still manual.`;
+      wrap.appendChild(mergedNote);
+    }
 
     if (doc && doc.lastExtraction) {
       const { matchedFieldIds, hasText } = doc.lastExtraction;
@@ -1984,10 +2026,11 @@
     const sourceDocsIntro = document.createElement("p");
     sourceDocsIntro.className = "nof-doc-intro";
     sourceDocsIntro.textContent = "Upload the conformed set (drawings + specifications + ITB) " +
-      "from the architect — any design stage works — and any matching fields below that are " +
-      "still blank will be filled in automatically. This is a best-effort text scan, not real " +
-      "reading comprehension — always double-check anything pulled in. Purely scanned drawing " +
-      "sheets usually have no extractable text at all, though spec/ITB pages in the same set often do.";
+      "from the architect — any design stage works. Received them as separate files? Select " +
+      "them all at once and they'll be merged into one PDF automatically. Any matching fields " +
+      "below that are still blank will be filled in from it. This is a best-effort text scan, " +
+      "not real reading comprehension — always double-check anything pulled in. Purely scanned " +
+      "drawing sheets usually have no extractable text at all, though spec/ITB pages in the same set often do.";
     opportunityFormBody.appendChild(sourceDocsIntro);
 
     opportunityFormBody.appendChild(renderConformedSetUploadRow(project, () => {
