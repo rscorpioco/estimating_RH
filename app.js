@@ -1854,28 +1854,185 @@
 
   async function extractPdfText(pdfDoc) {
     let text = "";
+    const pages = [];
     for (let i = 1; i <= pdfDoc.numPages; i++) {
       const page = await pdfDoc.getPage(i);
+      const viewport = page.getViewport({ scale: 1 });
       const content = await page.getTextContent();
-      text += groupTextItemsIntoLines(content.items).join("\n") + "\n";
+      const lines = groupTextItemsIntoLines(content.items, viewport);
+      pages.push(lines);
+      text += lines.map((l) => l.text).join("\n") + "\n";
     }
-    return text;
+    return { text, pages };
   }
 
-  // pdf.js hands back individual positioned text fragments, not lines — group fragments that
-  // share roughly the same vertical position into a line, left-to-right, so label-matching
-  // regexes like /^Owner:\s*(.+)/ have something to match against.
-  function groupTextItemsIntoLines(items) {
+  // pdf.js hands back individual positioned text fragments in raw PDF coordinate space, which
+  // can look nothing like on-page position for a rotated/transformed sheet (real title blocks
+  // come back with wildly non-visual coordinates otherwise) — running each fragment through the
+  // page's own viewport transform first fixes that. Fragments are then grouped into lines by
+  // matching row, splitting a row wherever there's a big horizontal gap so two unrelated
+  // columns sharing a row (e.g. a table cell and a title-block strip) don't get mashed into one
+  // string — this is what lets a title block get read as its own column even on a page dense
+  // with body text at the same height.
+  function groupTextItemsIntoLines(items, viewport) {
+    const m = viewport.transform;
+    // A fixed gap threshold doesn't work across drawing sets — a full-scale architectural sheet
+    // can be thousands of PDF units wide, versus ~600 for a normal letter-size page — so scale
+    // the "different column" cutoff to the page itself (with a floor so tiny pages still split).
+    const gapThreshold = Math.max(15, viewport.width * 0.035);
     const rows = new Map();
     items.forEach((item) => {
-      const y = Math.round(item.transform[5] / 2) * 2;
+      const px = m[0] * item.transform[4] + m[2] * item.transform[5] + m[4];
+      const py = m[1] * item.transform[4] + m[3] * item.transform[5] + m[5];
+      const y = Math.round(py / 2) * 2;
       if (!rows.has(y)) rows.set(y, []);
-      rows.get(y).push({ x: item.transform[4], str: item.str });
+      rows.get(y).push({ x: px, width: item.width || 0, str: item.str });
     });
-    return [...rows.keys()]
-      .sort((a, b) => b - a)
-      .map((y) => rows.get(y).sort((a, b) => a.x - b.x).map((i) => i.str).join(" ").trim())
-      .filter(Boolean);
+    const lines = [];
+    [...rows.keys()].sort((a, b) => a - b).forEach((y) => {
+      const rowItems = rows.get(y).sort((a, b) => a.x - b.x);
+      let run = [rowItems[0]];
+      const flushRun = () => {
+        const t = run.map((r) => r.str).join(" ").trim();
+        if (t) lines.push({ x: run[0].x, y, text: t });
+      };
+      for (let i = 1; i < rowItems.length; i++) {
+        const prev = run[run.length - 1];
+        const gap = rowItems[i].x - (prev.x + prev.width);
+        if (gap > gapThreshold) {
+          flushRun();
+          run = [rowItems[i]];
+        } else {
+          run.push(rowItems[i]);
+        }
+      }
+      flushRun();
+    });
+    return lines;
+  }
+
+  // Groups a page's lines into left-to-right columns by clustering on X position — a drawing's
+  // title block/consultant strip is almost always its own column, physically far from the body
+  // content, so this is what keeps a stray line from an unrelated column (e.g. "UF BUILDING
+  // NO.:" sharing a row with an engineer's address) from bleeding into a block below.
+  function clusterLinesByColumn(lines) {
+    if (!lines.length) return [];
+    const sorted = [...lines].sort((a, b) => a.x - b.x);
+    // Same reasoning as the gap threshold in groupTextItemsIntoLines — scale to how far apart
+    // this page's content actually is, rather than a fixed unit count that only suits one scale.
+    const range = sorted[sorted.length - 1].x - sorted[0].x;
+    const threshold = Math.max(60, range * 0.04);
+    const columns = [];
+    let current = [sorted[0]];
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].x - current[current.length - 1].x > threshold) {
+        columns.push(current);
+        current = [sorted[i]];
+      } else {
+        current.push(sorted[i]);
+      }
+    }
+    columns.push(current);
+    return columns.map((col) => [...col].sort((a, b) => a.y - b.y));
+  }
+
+  // Real title blocks/consultant lists on drawing cover sheets usually give each discipline its
+  // own ALL-CAPS heading (ARCHITECT, STRUCTURAL ENGINEER, etc.) with the company/address/phone
+  // stacked on the lines below it — not "Label: Value" on one line, which is what
+  // NOF_EXTRACTION_RULES/extractNofFieldsFromText alone can match. This is a second pass over
+  // the same lines that looks for those headings and reads the block beneath each one.
+  // "OWNER" deliberately isn't a trigger here — real sheets sprinkle it everywhere as a
+  // furniture/equipment responsibility callout ("OWNER" = who furnishes/installs an item, e.g.
+  // a mounting-height detail for an owner-provided paper towel dispenser), so treating a bare
+  // "OWNER" line as the start of a company/address block reliably grabs the wrong thing. Owner
+  // is only ever found via extractUnlabeledOwnerBlock below, which requires much stronger
+  // evidence (an actual company/address/city-state-zip shape) before accepting a match.
+  const NOF_AEC_BLOCK_HEADERS = [
+    { labels: ["ARCHITECT", "ARCHITECT OF RECORD"], fields: ["architectCo", "architectAddress", "architectCityStateZip", "architectPhone", "architectEmail"] },
+    { labels: ["STRUCTURAL ENGINEER"], fields: ["structuralEngineerCo"] },
+    { labels: ["CIVIL ENGINEER"], fields: ["civilEngineerCo"] },
+    { labels: ["MEPF ENGINEER", "MEPFP ENGINEER", "MEP ENGINEER", "MECHANICAL ENGINEER"], fields: ["mepfpEngineerCo"] },
+    { labels: ["LANDSCAPE ARCHITECT"], fields: ["landscapeArchitectCo"] },
+    { labels: ["INTERIOR DESIGNER"], fields: ["interiorDesignerCo"] },
+  ];
+  // Still used as a block-boundary stop marker (so e.g. an Architect block never runs into a
+  // stray "OWNER" callout below it) even though OWNER/CLIENT no longer start their own block.
+  const NOF_AEC_ALL_HEADER_LABELS = new Set([...NOF_AEC_BLOCK_HEADERS.flatMap((h) => h.labels), "OWNER", "CLIENT"]);
+  const CITY_STATE_ZIP_RE = /,\s*[A-Z]{2}\s+\d{5}(-\d{4})?\s*$/;
+  const PHONE_RE = /\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}/;
+  const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+
+  function assignAecBlockToFields(found, fields, blockLines) {
+    if (!blockLines.length) return;
+    if (fields[0] && !found[fields[0]]) found[fields[0]] = blockLines[0];
+    if (fields.length < 2) return; // company-only discipline (no address/phone fields on the form)
+    const [, addressField, cszField, phoneField, emailField] = fields;
+    const cszIdx = blockLines.findIndex((l) => CITY_STATE_ZIP_RE.test(l));
+    if (cszIdx > 0) {
+      if (cszField && !found[cszField]) found[cszField] = blockLines[cszIdx];
+      if (cszIdx > 1 && addressField && !found[addressField]) found[addressField] = blockLines[cszIdx - 1];
+    }
+    const phoneLine = blockLines.find((l) => PHONE_RE.test(l));
+    if (phoneLine && phoneField && !found[phoneField]) found[phoneField] = phoneLine.match(PHONE_RE)[0];
+    const emailLine = blockLines.find((l) => EMAIL_RE.test(l));
+    if (emailLine && emailField && !found[emailField]) found[emailField] = emailLine.match(EMAIL_RE)[0];
+  }
+
+  function extractAecBlocksFromColumn(found, columnLines) {
+    for (let i = 0; i < columnLines.length; i++) {
+      const upper = columnLines[i].text.trim().toUpperCase();
+      const header = NOF_AEC_BLOCK_HEADERS.find((h) => h.labels.includes(upper));
+      if (!header) continue;
+      const blockLines = [];
+      for (let j = i + 1; j < columnLines.length && blockLines.length < 6; j++) {
+        const nextUpper = columnLines[j].text.trim().toUpperCase();
+        if (NOF_AEC_ALL_HEADER_LABELS.has(nextUpper)) break;
+        blockLines.push(columnLines[j].text.trim());
+      }
+      assignAecBlockToFields(found, header.fields, blockLines);
+    }
+  }
+
+  // Some templates (a real University of Florida title block among them) never print an
+  // "OWNER"/"CLIENT" heading at all — the owner's name/address/city-state-zip just sits there,
+  // usually near the top project-identifier block. Falls back to the first company/address/
+  // city-state-zip triple that isn't already one of the AEC companies just found.
+  function extractUnlabeledOwnerBlock(found, columns) {
+    if (found.ownerCompany) return;
+    const claimedCompanies = new Set(Object.values(found));
+    const skipHeadings = new Set([
+      "PROJECT DESCRIPTION", "PROJECT INFORMATION", "PROJECT LOCATION", "LOCATION MAP",
+      "BUILDING INFORMATION AND LIMITATIONS", "AREAS AND OCCUPANT LOAD", "INDEX OF DRAWINGS",
+      "SEAL AND SIGNATURE", "GENERAL", "ARCHITECTURAL", "STRUCTURAL", "CIVIL", "MECHANICAL",
+      "ELECTRICAL", "PLUMBING", "LANDSCAPE", "FIRE PROTECTION",
+    ]);
+    for (const column of columns) {
+      for (let i = 2; i < column.length; i++) {
+        const cityLine = column[i].text.trim();
+        if (!CITY_STATE_ZIP_RE.test(cityLine)) continue;
+        const addressLine = column[i - 1].text.trim();
+        const companyLine = column[i - 2].text.trim();
+        if (!/\d/.test(addressLine)) continue;
+        if (skipHeadings.has(companyLine.toUpperCase()) || NOF_AEC_ALL_HEADER_LABELS.has(companyLine.toUpperCase())) continue;
+        if (claimedCompanies.has(companyLine)) continue;
+        found.ownerCompany = companyLine;
+        found.ownerAddress = addressLine;
+        found.ownerCityStateZip = cityLine;
+        return;
+      }
+    }
+  }
+
+  function extractAecBlocksFromPages(pages) {
+    const found = {};
+    pages.forEach((pageLines) => {
+      const columns = clusterLinesByColumn(pageLines);
+      columns.forEach((column) => extractAecBlocksFromColumn(found, column));
+    });
+    pages.forEach((pageLines) => {
+      extractUnlabeledOwnerBlock(found, clusterLinesByColumn(pageLines));
+    });
+    return found;
   }
 
   function parseFuzzyDate(str) {
@@ -1903,7 +2060,7 @@
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
-  function extractNofFieldsFromText(text) {
+  function extractNofFieldsFromText(text, pages) {
     const lines = text.split("\n");
     const found = {};
     NOF_EXTRACTION_RULES.forEach((rule) => {
@@ -1922,6 +2079,14 @@
         }
       }
     });
+    // Same-line "Label: Value" text takes priority (it's unambiguous); the block-based scan of
+    // title-block headings below only fills in whatever that pass didn't already find.
+    if (pages) {
+      const blockMatches = extractAecBlocksFromPages(pages);
+      Object.keys(blockMatches).forEach((fieldId) => {
+        if (!found[fieldId]) found[fieldId] = blockMatches[fieldId];
+      });
+    }
     const contractType = matchContractType(text);
     if (contractType) found.contractType = contractType;
     return found;
@@ -1962,8 +2127,8 @@
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     const pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
-    const text = await extractPdfText(pdfDoc);
-    const matches = extractNofFieldsFromText(text);
+    const { text, pages } = await extractPdfText(pdfDoc);
+    const matches = extractNofFieldsFromText(text, pages);
 
     // The checklist affordance lets this run before the Opportunity Form has ever been
     // opened, so the project-linked/placeholder defaults (dateOwnerProject's "[Owner]" text
