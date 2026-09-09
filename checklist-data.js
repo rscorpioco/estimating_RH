@@ -27,18 +27,21 @@ const CHECKLIST_PHASES = [
         ],
       },
       {
-        id: "act-conformed-set",
-        group: "1 · New Opportunity Form & Procore Request",
-        text: "Upload the conformed set (drawings + specifications + ITB) from the architect",
-        sub: [
-          { text: "Any design stage works — Conceptual, Schematic Design, Design Development, or Construction Documents — the fields pulled are the same" },
-          { text: "Received as separate files? Select all of them at once (drawings, specs, ITB) and they'll be merged into one file automatically — no need to combine them yourself first" },
-        ],
-      },
-      {
         id: "act-1",
         group: "1 · New Opportunity Form & Procore Request",
+        condition: "NoContract",
         text: "Complete new opportunity form and send to ATF for Procore creation",
+        sub: [{ text: "Pulls from the Drawings/Specifications uploaded at the top of the page — no separate upload needed here" }],
+      },
+      {
+        id: "act-1-precon",
+        group: "1 · Precon Start Up Form & Procore Request",
+        condition: "HasContract",
+        text: "Complete the Precon Start Up Form and email it to your Finance Manager and Jill Altman",
+        sub: [
+          { text: "A signed contract is uploaded, so this replaces the New Opportunity Form for this project" },
+          { text: "Pulls from the Drawings/Specifications uploaded at the top of the page — no separate upload needed here" },
+        ],
       },
 
       {
@@ -57,7 +60,7 @@ const CHECKLIST_PHASES = [
             sub: [{ text: "Keep the RFI log open to begin tracking anything found" }],
           },
           { text: "Look for niche information such as site visits, sealed bids, bid requirements, RFI deadline, etc." },
-          { text: "The Conformed Set upload above can merge multiple loose files into one PDF, but actual bookmarks/page labels for Destini still have to be added in Bluebeam by hand" },
+          { text: "The Drawings/Specifications upload at the top of the page can merge multiple loose files into one PDF, but actual bookmarks/page labels for Destini still have to be added in Bluebeam by hand" },
         ],
       },
       {
@@ -191,6 +194,7 @@ const CHECKLIST_PHASES = [
         group: "6 · Niche Tasks",
         text: "(If needed) Obtain the Builder's Risk Quote",
         sub: [
+          { text: "Available once the New Opportunity Form or Precon Start Up Form has been started — fills in what it can from that data" },
           {
             text: "Email doug.johnson1@hubinternational.com; kyle.whitman@hubinternational.com; andrea.kioutas@hubinternational.com",
             link: "mailto:doug.johnson1@hubinternational.com,kyle.whitman@hubinternational.com,andrea.kioutas@hubinternational.com",
@@ -202,7 +206,10 @@ const CHECKLIST_PHASES = [
         id: "act-bond",
         group: "6 · Niche Tasks",
         text: "(If needed) Obtain the Bond Quote",
-        sub: [{ text: "Email Bill Palmer, Hatcher Insurance", link: "mailto:bpalmer@hatcherins.com" }],
+        sub: [
+          { text: "Available once the New Opportunity Form or Precon Start Up Form has been started — fills in what it can from that data" },
+          { text: "Email Bill Palmer, Hatcher Insurance", link: "mailto:bpalmer@hatcherins.com" },
+        ],
       },
       {
         id: "act-permit",
@@ -673,4 +680,82 @@ const PDPO_TEAM_ROLES = [
   { id: "po", label: "PO — Project Operations" },
   { id: "fm", label: "FM" },
   { id: "pd", label: "PD — Project Development" },
+];
+
+// ---------- Precon Start Up Form ----------
+// Used instead of the New Opportunity Form once a signed contract is uploaded — transcribed
+// from Scorpio's "New Opp / Precon / Bond" workbook's "Precon Form" tab. That tab's own
+// composite "Project Number(A) + Owner + Project Name" field is handled the same way the New
+// Opportunity Form's dateOwnerProject is: auto-built, "[Owner]" swapped in once extraction or
+// the NOF supplies one, and left alone the moment it's edited by hand.
+const PRECON_FIELDS = [
+  { id: "totalPreconValue", label: "Total Preconstruction Services Value", type: "currency" },
+  { id: "dateSubmitted", label: "Date This Form Is Submitted", type: "date" },
+  { id: "estimatedStart", label: "Estimated Start of Precon", type: "date" },
+  { id: "billingType", label: "Billing Type", type: "text" },
+  { id: "estimatedEnd", label: "Estimated End of Precon", type: "date" },
+  { id: "billingContact", label: "Billing Contact Name and Email", type: "text" },
+];
+
+// The PC Services Billing Schedule of Values — one $ amount + one date per milestone.
+const PRECON_SOV_MILESTONES = [
+  { id: "concept", label: "Concept" },
+  { id: "sdEstimate", label: "SD Estimate" },
+  { id: "ddEstimate", label: "DD Estimate" },
+  { id: "cd90Estimate", label: "90% CD Estimate" },
+  { id: "gmp", label: "GMP" },
+];
+
+// Who to email the completed form to, per the workbook's own reference table (plus Jill
+// Altman on every submission, per its instructions) — informational only, since the workbook
+// gives names but not email addresses to build a mailto link from.
+const PRECON_FINANCE_MANAGERS_BY_OFFICE = {
+  Gainesville: "Maegan Jones (Majors) / Heath Locklear (Minors)",
+  Jacksonville: "Mari Rivera",
+  Orlando: "Shanice Spalding",
+  Tallahassee: "Mari Rivera",
+  Ocala: "Maegan Jones (Majors) / Heath Locklear (Minors)",
+};
+
+// ---------- Bond Request Form ----------
+// Transcribed from the same workbook's "Bond Request Form" tab. "Request By" and "Contractor"
+// are fixed to Scorpio's own name on that template, not fields to fill in.
+const BOND_REQUESTOR_NAME = "D. E. Scorpio Corporation";
+const BOND_FIELDS = [
+  { id: "dateOfRequest", label: "Date of Request", type: "date" },
+  { id: "ownerObligeeNameAddress", label: "Owner/Obligee Name and Address", type: "textarea", section: "Project" },
+  { id: "scopeOfWork", label: "Scope of Work", type: "textarea", section: "Project" },
+  { id: "architect", label: "Architect", type: "text", section: "Project" },
+  { id: "completionTime", label: "Completion Time", type: "text", section: "Project" },
+  { id: "liquidatedDamages", label: "Liquidated Damages", type: "text", section: "Project" },
+  { id: "retainagePct", label: "Retainage %", type: "text", defaultValue: "5%", section: "Project" },
+  { id: "warrantyPeriod", label: "Warranty/Maintenance Period", type: "text", defaultValue: "1 year", section: "Project" },
+  { id: "amountSubcontractedPct", label: "Amount Subcontracted %", type: "text", section: "Project" },
+  { id: "workOnHand", label: "Work on Hand — Approx. Remaining Unbilled Contract Backlog", type: "text", section: "Project" },
+  { id: "bidDate", label: "Bid Date", type: "date", section: "If Request Is for a Bid Bond" },
+  { id: "bidNumber", label: "Bid Number", type: "text", section: "If Request Is for a Bid Bond" },
+  { id: "estimatedBidAmount", label: "Estimated Bid Amount", type: "text", section: "If Request Is for a Bid Bond" },
+  { id: "bidBondAmountPct", label: "Amount or % of Bid Bond", type: "text", section: "If Request Is for a Bid Bond" },
+  { id: "contractDate", label: "Contract Date", type: "date", section: "If Request Is for a Performance/Payment Bond" },
+  { id: "contractAmount", label: "Amount of Contract", type: "text", section: "If Request Is for a Performance/Payment Bond" },
+];
+
+// ---------- Builder's Risk Quote Request ----------
+// A meaningful subset of the real HUB International "Builders Risk Application" (a 124-field
+// fillable PDF) that this app can actually help with — insurance elections, deductibles,
+// construction materials, and additional interests still have to be filled in on the real form
+// by hand, since none of that is data this app tracks.
+const BUILDERS_RISK_FIELDS = [
+  { id: "insuredName", label: "Insured Name", type: "text" },
+  { id: "namedInsuredDescription", label: "Description of the Named Insured (Owner / Contractor / Owner-Contractor)", type: "text" },
+  { id: "insuredAddress", label: "Insured's Address", type: "text" },
+  { id: "insuredCityStateZip", label: "Insured City, State, ZIP", type: "text" },
+  { id: "projectAddress", label: "Project Address", type: "text" },
+  { id: "typeOfProject", label: "Type of Project", type: "text" },
+  { id: "squareFootage", label: "Square Footage (Including Basement)", type: "text" },
+  { id: "totalCompletedValue", label: "Total Completed Value of All Covered Property", type: "text" },
+  { id: "lengthOfProject", label: "Length of Project", type: "text" },
+  { id: "contractorName", label: "Name of Contractor", type: "text", defaultValue: "D. E. Scorpio Corporation" },
+  { id: "policyEffectiveDate", label: "Desired Policy Effective Date", type: "date" },
+  { id: "expectedCompletionDate", label: "Expected Completion Date of Project", type: "date" },
 ];

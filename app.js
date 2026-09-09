@@ -56,6 +56,21 @@
   const pdpoBody = document.getElementById("pdpoBody");
   const pdpoProgress = document.getElementById("pdpoProgress");
 
+  const preconDialog = document.getElementById("preconDialog");
+  const preconProjectName = document.getElementById("preconProjectName");
+  const preconBody = document.getElementById("preconBody");
+  const preconProgress = document.getElementById("preconProgress");
+
+  const bondDialog = document.getElementById("bondDialog");
+  const bondProjectName = document.getElementById("bondProjectName");
+  const bondBody = document.getElementById("bondBody");
+  const bondProgress = document.getElementById("bondProgress");
+
+  const buildersRiskDialog = document.getElementById("buildersRiskDialog");
+  const buildersRiskProjectName = document.getElementById("buildersRiskProjectName");
+  const buildersRiskBody = document.getElementById("buildersRiskBody");
+  const buildersRiskProgress = document.getElementById("buildersRiskProgress");
+
   const miniDialog = document.getElementById("miniDialog");
   const miniDialogForm = document.getElementById("miniDialogForm");
   const miniDialogMessage = document.getElementById("miniDialogMessage");
@@ -104,23 +119,37 @@
   let kickoffProjectId = null;
   let levelProjectId = null;
   let pdpoProjectId = null;
-  // The conformed drawing set, its rendered page thumbnails, each page's tagged category, and
-  // the parsed pdf.js document (kept around so the zoom view can re-render any page on demand)
-  // are held in memory only (not persisted to localStorage — a drawing set can be many MB),
-  // keyed by projectId. Re-attach and re-tag after a reload.
-  const kickoffConformedFiles = new Map();
+  let preconProjectId = null;
+  let bondProjectId = null;
+  let buildersRiskProjectId = null;
+  // The Kickoff Package's rendered page thumbnails, each page's tagged category, and the parsed
+  // pdf.js document (kept around so the zoom view can re-render any page on demand) — generated
+  // from the central Drawings upload below, held in memory only (not persisted to localStorage
+  // — a drawing set can be many MB), keyed by projectId. Regenerated after a reload once
+  // Drawings are re-attached.
   const kickoffPageThumbnails = new Map();
   const kickoffPageAssignments = new Map();
   const kickoffPdfDocs = new Map();
   let kickoffZoomState = { projectId: null, pageIndex: 0 };
 
-  // The conformed set (drawings + specs + ITB) uploaded ahead of the New Opportunity Form,
-  // same in-memory-only treatment as the Kickoff conformed set — not persisted, only the
-  // field values it produces are saved. Keyed by projectId. Uploading it either from the
-  // checklist affordance or from inside the Opportunity dialog writes to this same map, so
-  // both places always show the same state.
-  const nofConformedSetDocs = new Map();
-  let nofDocViewerState = { projectId: null, pageIndex: 0 };
+  // One shared set of Drawings / Specifications / Contract uploads per project, at the top of
+  // the page, ahead of every form that reads from them — same in-memory-only treatment as the
+  // Kickoff thumbnails above (not persisted; only the field values pulled from them are saved).
+  // Keyed by `${projectId}:${slotId}`.
+  const DOCUMENT_SLOTS = [
+    { id: "drawings", label: "Drawings" },
+    { id: "specifications", label: "Specifications" },
+    { id: "contract", label: "Contract" },
+  ];
+  const projectDocuments = new Map();
+  let nofDocViewerState = { projectId: null, slotId: null, pageIndex: 0 };
+
+  function documentKey(projectId, slotId) {
+    return projectId + ":" + slotId;
+  }
+  function getProjectDocument(project, slotId) {
+    return projectDocuments.get(documentKey(project.id, slotId));
+  }
 
   // Fields whose values already live elsewhere in the app (the project record). They stay
   // "linked" — recomputed fresh every time the form opens — until the user types into them
@@ -226,7 +255,7 @@
   // any other already-open dialog — without this, opening a second one stacks on top of the
   // first, and closing the top one leaves the other sitting there looking "stuck" open.
   function closeAllDialogs(except) {
-    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog, pdpoDialog].forEach((d) => {
+    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog, pdpoDialog, preconDialog, bondDialog, buildersRiskDialog].forEach((d) => {
       if (d && d !== except && d.open) d.close();
     });
   }
@@ -297,6 +326,27 @@
     document.getElementById("closePdpoBtn").addEventListener("click", () => pdpoDialog.close());
     document.getElementById("closePdpoBtn2").addEventListener("click", () => pdpoDialog.close());
     pdpoDialog.addEventListener("close", () => {
+      renderProjectList();
+      renderActiveProject();
+    });
+
+    document.getElementById("closePreconBtn").addEventListener("click", () => preconDialog.close());
+    document.getElementById("exportPreconBtn").addEventListener("click", handleExportPrecon);
+    preconDialog.addEventListener("close", () => {
+      renderProjectList();
+      renderActiveProject();
+    });
+
+    document.getElementById("closeBondBtn").addEventListener("click", () => bondDialog.close());
+    document.getElementById("exportBondBtn").addEventListener("click", handleExportBond);
+    bondDialog.addEventListener("close", () => {
+      renderProjectList();
+      renderActiveProject();
+    });
+
+    document.getElementById("closeBuildersRiskBtn").addEventListener("click", () => buildersRiskDialog.close());
+    document.getElementById("exportBuildersRiskBtn").addEventListener("click", handleExportBuildersRisk);
+    buildersRiskDialog.addEventListener("close", () => {
       renderProjectList();
       renderActiveProject();
     });
@@ -413,6 +463,8 @@
   function itemApplies(item, project) {
     if (item.condition === "CM") return project.deliveryMethod === "CM at Risk (Interview)";
     if (item.condition === "HardBid") return project.deliveryMethod === "Hard Bid";
+    if (item.condition === "HasContract") return !!project.contractUploaded;
+    if (item.condition === "NoContract") return !project.contractUploaded;
     return true;
   }
 
@@ -538,6 +590,7 @@
     dayZeroEl.className = "day-zero-banner";
     dayZeroEl.innerHTML = `<strong>${escapeHtml(DAY_ZERO_LABEL.split(" — ")[0])}</strong> — ${escapeHtml(DAY_ZERO_LABEL.split(" — ")[1])}: ${escapeHtml(formatDate(new Date(project.activateDate + "T00:00:00")))}`;
     projectDetailEl.appendChild(dayZeroEl);
+    projectDetailEl.appendChild(renderDocumentsSection(project));
 
     const overallEl = document.createElement("div");
     overallEl.className = "overall-progress";
@@ -572,17 +625,38 @@
     list.className = "forms-summary-list";
 
     const pdpo = countPdPoFieldsFilled(project);
-    const nof = countOpportunityFieldsFilled(project);
     const level = countLevelCoverage(project);
     const kickoff = countKickoffProgress(project);
     const levelOrBid = project.deliveryMethod === "Hard Bid" ? "Bid Day" : "Level Day";
+    const unlocked = isPrimaryFormStarted(project);
 
     const entries = [
       { label: "PD/PO Coordination", filled: pdpo.fieldsFilled, total: pdpo.fieldsTotal, onOpen: () => openPdPoDialog(project) },
-      { label: "New Opportunity Form", filled: nof.filled, total: nof.total, onOpen: () => openOpportunityDialog(project) },
+    ];
+
+    // Whichever of these is the active path for this project (see the "HasContract"/
+    // "NoContract" checklist conditions) is the one shown here — not both at once.
+    if (project.contractUploaded) {
+      const precon = countPreconFieldsFilled(project);
+      entries.push({ label: "Precon Start Up Form", filled: precon.filled, total: precon.total, onOpen: () => openPreconDialog(project) });
+    } else {
+      const nof = countOpportunityFieldsFilled(project);
+      entries.push({ label: "New Opportunity Form", filled: nof.filled, total: nof.total, onOpen: () => openOpportunityDialog(project) });
+    }
+
+    entries.push(
       { label: `Kickoff / ${levelOrBid} Package`, filled: kickoff.fieldsFilled, total: kickoff.fieldsTotal, onOpen: () => openKickoffDialog(project) },
       { label: "6S Level Assignments & Bid Packages", filled: level.assignedTrades, total: level.totalTrades, onOpen: () => openLevelDialog(project) },
-    ];
+    );
+
+    if (unlocked) {
+      const bond = countBondFieldsFilled(project);
+      const buildersRisk = countBuildersRiskFieldsFilled(project);
+      entries.push(
+        { label: "Bond Request", filled: bond.filled, total: bond.total, onOpen: () => openBondDialog(project) },
+        { label: "Builder's Risk Request", filled: buildersRisk.filled, total: buildersRisk.total, onOpen: () => openBuildersRiskDialog(project) },
+      );
+    }
 
     entries.forEach((entry) => {
       const item = document.createElement("button");
@@ -602,6 +676,14 @@
     });
 
     wrap.appendChild(list);
+
+    if (!unlocked) {
+      const lockedNote = document.createElement("p");
+      lockedNote.className = "pdpo-linked-note";
+      lockedNote.textContent = "Bond Request and Builder's Risk Request will show up here once the New Opportunity Form or Precon Start Up Form has been started.";
+      wrap.appendChild(lockedNote);
+    }
+
     return wrap;
   }
 
@@ -709,12 +791,12 @@
       wrap.appendChild(renderPdPoCoordinationAffordance(project));
     }
 
-    if (item.id === "act-conformed-set") {
-      wrap.appendChild(renderConformedSetAffordance(project));
-    }
-
     if (item.id === "act-1") {
       wrap.appendChild(renderOpportunityFormAffordance(project));
+    }
+
+    if (item.id === "act-1-precon") {
+      wrap.appendChild(renderPreconFormAffordance(project));
     }
 
     if (item.id === "act-6slevel") {
@@ -723,6 +805,14 @@
 
     if (item.id === "act-kickoff") {
       wrap.appendChild(renderKickoffAffordance(project));
+    }
+
+    if (item.id === "act-bond") {
+      wrap.appendChild(renderBondRequestAffordance(project));
+    }
+
+    if (item.id === "act-buildersrisk") {
+      wrap.appendChild(renderBuildersRiskAffordance(project));
     }
 
     return wrap;
@@ -884,7 +974,7 @@
     return {
       fieldsFilled,
       fieldsTotal: KICKOFF_FIELDS.length,
-      hasFile: kickoffConformedFiles.has(project.id),
+      hasFile: !!getProjectDocument(project, "drawings"),
       totalPages: assignments.length,
       taggedPages,
       categoriesTagged,
@@ -953,16 +1043,22 @@
     drawingsTitle.className = "nof-section-title";
     drawingsTitle.textContent = "Conformed Drawing Set";
     kickoffBody.appendChild(drawingsTitle);
-    kickoffBody.appendChild(renderKickoffUploadRow(project));
+
+    const note = document.createElement("p");
+    note.className = "nof-doc-intro";
+    const drawingsDoc = getProjectDocument(project, "drawings");
+    note.textContent = drawingsDoc
+      ? `Using the Drawings uploaded at the top of the page (${drawingsDoc.sourceNames.length > 1 ? drawingsDoc.sourceNames.join(" + ") : drawingsDoc.file.name}, ${drawingsDoc.numPages} pages).`
+      : "No Drawings uploaded yet — upload them in the Documents section at the top of the page and they'll show up here automatically.";
+    kickoffBody.appendChild(note);
 
     const grid = document.createElement("div");
     grid.className = "kickoff-thumb-grid";
     grid.id = "kickoffThumbGrid";
     kickoffBody.appendChild(grid);
 
-    const existingFile = kickoffConformedFiles.get(project.id);
     const cachedThumbs = kickoffPageThumbnails.get(project.id);
-    if (existingFile && cachedThumbs) {
+    if (drawingsDoc && cachedThumbs) {
       renderKickoffThumbnails(project, cachedThumbs);
     }
 
@@ -980,59 +1076,19 @@
     }
   }
 
-  function renderKickoffUploadRow(project) {
-    const existing = kickoffConformedFiles.get(project.id);
-
-    const row = document.createElement("div");
-    row.className = "kickoff-upload-row";
-
-    const label = document.createElement("span");
-    label.className = "kickoff-upload-label";
-    label.textContent = "Drawing Set";
-
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "application/pdf";
-    input.id = "kickoff_conformed_file";
-
-    const status = document.createElement("span");
-    status.className = "kickoff-upload-status";
-    status.textContent = existing ? existing.name : "No file attached";
-
-    input.addEventListener("change", async () => {
-      const file = input.files && input.files[0];
-      if (!file) return;
-      status.textContent = "Reading " + file.name + "…";
-      try {
-        await processKickoffConformedSet(project, file);
-        status.textContent = file.name;
-      } catch (err) {
-        status.textContent = "Couldn't read that file";
-        await miniAlert("Couldn't read that PDF: " + (err && err.message ? err.message : err));
-      }
-      updateKickoffProgressLabel(project);
-      renderProjectList();
-    });
-
-    row.appendChild(label);
-    row.appendChild(input);
-    row.appendChild(status);
-    return row;
+  // Called once right after Drawings are (re)uploaded in the central Documents section, so the
+  // thumbnails are already there by the time the Kickoff dialog is opened.
+  async function ensureKickoffThumbnailsFromDrawings(project) {
+    const doc = getProjectDocument(project, "drawings");
+    if (!doc) return;
+    await generateKickoffThumbnails(project, doc.pdfDoc);
   }
 
-  async function processKickoffConformedSet(project, file) {
-    const pdfjsLib = await waitForPdfJs();
-    if (!pdfjsLib) throw new Error("The page-preview library didn't load — check your internet connection");
-
-    kickoffConformedFiles.set(project.id, file);
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  async function generateKickoffThumbnails(project, pdf) {
     kickoffPdfDocs.set(project.id, pdf);
-
     kickoffPageAssignments.set(project.id, new Array(pdf.numPages).fill(""));
 
     const grid = document.getElementById("kickoffThumbGrid");
-    grid.innerHTML = "";
     const thumbs = [];
 
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -1044,7 +1100,7 @@
       await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
       const dataUrl = canvas.toDataURL("image/png");
       thumbs.push(dataUrl);
-      grid.appendChild(renderKickoffThumbCell(project, pageNum - 1, dataUrl));
+      if (grid) grid.appendChild(renderKickoffThumbCell(project, pageNum - 1, dataUrl));
     }
 
     kickoffPageThumbnails.set(project.id, thumbs);
@@ -1301,7 +1357,8 @@
 
     wrappedBlock("Alternates:", data.alternates);
 
-    const conformedFile = kickoffConformedFiles.get(project.id);
+    const drawingsDoc = getProjectDocument(project, "drawings");
+    const conformedFile = drawingsDoc && drawingsDoc.file;
     const assignments = kickoffPageAssignments.get(project.id) || [];
     if (conformedFile) {
       const srcBytes = new Uint8Array(await conformedFile.arrayBuffer());
@@ -1669,6 +1726,688 @@
     });
     wrap.appendChild(grid);
     return wrap;
+  }
+
+  // ---------- Precon Start Up Form ----------
+  // Fills in for the New Opportunity Form once a signed Contract is uploaded (see the
+  // "HasContract"/"NoContract" checklist conditions and itemApplies above).
+
+  function getPrecon(project) {
+    project.precon = project.precon || { fields: {}, sov: {} };
+    project.precon.fields = project.precon.fields || {};
+    project.precon.sov = project.precon.sov || {};
+    return project.precon;
+  }
+
+  // Same "[Owner]" placeholder-and-swap pattern as the New Opportunity Form's dateOwnerProject
+  // — runDocumentExtraction fills in the real owner name once Drawings/Specifications supply one.
+  function applyPreconDefaults(project) {
+    const data = getPrecon(project);
+    if (data.projectIdentifier === undefined) {
+      data.projectIdentifier = `[Owner] — ${project.name}`;
+    }
+    if (data.fields.dateSubmitted === undefined) data.fields.dateSubmitted = todayIso();
+  }
+
+  function countPreconFieldsFilled(project) {
+    const data = getPrecon(project);
+    const flatFilled = PRECON_FIELDS.filter((f) => {
+      const v = data.fields[f.id];
+      return v !== undefined && v !== null && String(v).trim() !== "";
+    }).length;
+    const idFilled = data.projectIdentifier && !data.projectIdentifier.includes("[Owner]") ? 1 : 0;
+    const sovFilled = PRECON_SOV_MILESTONES.reduce((sum, m) => {
+      const row = data.sov[m.id] || {};
+      return sum + (row.value ? 1 : 0) + (row.date ? 1 : 0);
+    }, 0);
+    const total = PRECON_FIELDS.length + 1 + PRECON_SOV_MILESTONES.length * 2;
+    return { filled: flatFilled + idFilled + sovFilled, total };
+  }
+
+  function renderPreconFormAffordance(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "item-inline-actions";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm";
+    btn.textContent = "Fill Out Precon Start Up Form";
+    btn.addEventListener("click", () => openPreconDialog(project));
+
+    const { filled, total } = countPreconFieldsFilled(project);
+    const hint = document.createElement("span");
+    hint.className = "nof-progress-inline";
+    hint.textContent = filled > 0 ? `${filled}/${total} fields filled` : `${total} fields — not started`;
+
+    wrap.appendChild(btn);
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function openPreconDialog(project) {
+    closeAllDialogs(preconDialog);
+    preconProjectId = project.id;
+    applyPreconDefaults(project);
+    saveState();
+    preconProjectName.textContent = `${project.name} — ${project.location}`;
+    renderPreconBody(project);
+    updatePreconProgressLabel(project);
+    preconDialog.showModal();
+  }
+
+  function updatePreconProgressLabel(project) {
+    const { filled, total } = countPreconFieldsFilled(project);
+    preconProgress.textContent = `${filled} of ${total} fields filled`;
+  }
+
+  function renderPreconBody(project) {
+    preconBody.innerHTML = "";
+    const data = getPrecon(project);
+
+    preconBody.appendChild(renderSourceDocsNote(project));
+
+    const idRow = document.createElement("div");
+    idRow.className = "nof-row";
+    idRow.style.gridTemplateColumns = "1fr";
+    const idField = document.createElement("div");
+    idField.className = "nof-field";
+    const idLabel = document.createElement("label");
+    const idLabelText = document.createElement("span");
+    idLabelText.textContent = "Project Number + Owner + Project Name";
+    idLabel.appendChild(idLabelText);
+    const idInput = document.createElement("input");
+    idInput.type = "text";
+    idInput.value = data.projectIdentifier || "";
+    idInput.id = "precon_projectIdentifier";
+    idInput.addEventListener("input", () => {
+      data.projectIdentifier = idInput.value;
+      saveState();
+      updatePreconProgressLabel(project);
+    });
+    idLabel.appendChild(idInput);
+    idField.appendChild(idLabel);
+    idRow.appendChild(idField);
+    preconBody.appendChild(idRow);
+
+    const genTitle = document.createElement("div");
+    genTitle.className = "nof-section-title";
+    genTitle.textContent = "General Information";
+    preconBody.appendChild(genTitle);
+
+    for (let i = 0; i < PRECON_FIELDS.length; i += 2) {
+      const row = document.createElement("div");
+      row.className = "nof-row";
+      row.appendChild(renderPreconField(project, PRECON_FIELDS[i]));
+      row.appendChild(PRECON_FIELDS[i + 1] ? renderPreconField(project, PRECON_FIELDS[i + 1]) : emptyOpportunityField());
+      preconBody.appendChild(row);
+    }
+
+    const sovTitle = document.createElement("div");
+    sovTitle.className = "nof-section-title";
+    sovTitle.textContent = "PC Services Billing Schedule of Values";
+    preconBody.appendChild(sovTitle);
+    preconBody.appendChild(renderPreconSovTable(project));
+
+    const sendTitle = document.createElement("div");
+    sendTitle.className = "nof-section-title";
+    sendTitle.textContent = "Send To";
+    preconBody.appendChild(sendTitle);
+    const sendNote = document.createElement("p");
+    sendNote.className = "pdpo-linked-note";
+    const manager = PRECON_FINANCE_MANAGERS_BY_OFFICE[project.location] || "your Finance Manager";
+    sendNote.textContent = `Per the workbook's reference table: email this completed form to ${manager} and Jill Altman.`;
+    preconBody.appendChild(sendNote);
+  }
+
+  function renderPreconField(project, field) {
+    const data = getPrecon(project).fields;
+    const wrap = document.createElement("div");
+    wrap.className = "nof-field";
+
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    labelText.textContent = field.label;
+    label.appendChild(labelText);
+
+    const input = document.createElement("input");
+    input.type = field.type === "date" ? "date" : field.type === "currency" ? "number" : "text";
+    input.value = data[field.id] || "";
+    input.id = "precon_" + field.id;
+    input.addEventListener("input", () => {
+      data[field.id] = input.value;
+      saveState();
+      updatePreconProgressLabel(project);
+    });
+
+    label.appendChild(input);
+    wrap.appendChild(label);
+    return wrap;
+  }
+
+  function renderPreconSovTable(project) {
+    const data = getPrecon(project).sov;
+    const table = document.createElement("table");
+    table.className = "level-table";
+    const thead = document.createElement("thead");
+    thead.innerHTML = "<tr><th>Milestone</th><th>Value</th><th>Date</th></tr>";
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    PRECON_SOV_MILESTONES.forEach((m) => {
+      const row = data[m.id] || (data[m.id] = { value: "", date: "" });
+      const tr = document.createElement("tr");
+
+      const labelCell = document.createElement("td");
+      labelCell.textContent = m.label;
+      tr.appendChild(labelCell);
+
+      const valueCell = document.createElement("td");
+      const valueInput = document.createElement("input");
+      valueInput.type = "text";
+      valueInput.placeholder = "$";
+      valueInput.value = row.value || "";
+      valueInput.addEventListener("input", () => {
+        row.value = valueInput.value;
+        saveState();
+        updatePreconProgressLabel(project);
+      });
+      valueCell.appendChild(valueInput);
+      tr.appendChild(valueCell);
+
+      const dateCell = document.createElement("td");
+      const dateInput = document.createElement("input");
+      dateInput.type = "date";
+      dateInput.value = row.date || "";
+      dateInput.addEventListener("input", () => {
+        row.date = dateInput.value;
+        saveState();
+        updatePreconProgressLabel(project);
+      });
+      dateCell.appendChild(dateInput);
+      tr.appendChild(dateCell);
+
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    return table;
+  }
+
+  async function handleExportPrecon() {
+    const project = state.projects.find((p) => p.id === preconProjectId);
+    if (!project) return;
+    if (typeof ExcelJS === "undefined") {
+      await miniAlert("The Excel export library didn't load (check your internet connection) — your entries are still saved in the app.");
+      return;
+    }
+    const exportBtn = document.getElementById("exportPreconBtn");
+    const originalLabel = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = "Exporting…";
+    try {
+      const blob = await buildPreconWorkbookBlob(project);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${sanitizeFilename(project.name)}_Precon_Start_Up_Form.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = originalLabel;
+    }
+  }
+
+  async function buildPreconWorkbookBlob(project) {
+    const data = getPrecon(project);
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Scorpio Preconstruction — CM Startup Board";
+    wb.created = new Date();
+    const ws = wb.addWorksheet("Precon Form");
+    ws.columns = [{ width: 38 }, { width: 34 }, { width: 16 }];
+
+    let row = 1;
+    ws.getCell(`A${row}`).value = "PRECONSTRUCTION FORM";
+    ws.getCell(`A${row}`).font = { bold: true, size: 13 };
+    row += 2;
+
+    ws.getCell(`A${row}`).value = "Project Number + Owner + Project Name";
+    ws.getCell(`A${row}`).font = { bold: true };
+    ws.getCell(`B${row}`).value = data.projectIdentifier || "";
+    row++;
+
+    PRECON_FIELDS.forEach((f) => {
+      ws.getCell(`A${row}`).value = f.label;
+      ws.getCell(`A${row}`).font = { bold: true };
+      ws.getCell(`B${row}`).value = data.fields[f.id] || "";
+      row++;
+    });
+    row++;
+
+    ws.getCell(`A${row}`).value = "PC Services Billing Schedule of Values";
+    ws.getCell(`A${row}`).font = { bold: true, size: 11 };
+    row++;
+    ws.getCell(`A${row}`).value = "Milestone";
+    ws.getCell(`B${row}`).value = "Value";
+    ws.getCell(`C${row}`).value = "Date";
+    ["A", "B", "C"].forEach((col) => { ws.getCell(`${col}${row}`).font = { bold: true }; });
+    row++;
+    PRECON_SOV_MILESTONES.forEach((m) => {
+      const r = data.sov[m.id] || {};
+      ws.getCell(`A${row}`).value = m.label;
+      ws.getCell(`B${row}`).value = r.value || "";
+      ws.getCell(`C${row}`).value = r.date || "";
+      row++;
+    });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+
+  // ---------- Bond Request Form ----------
+  // "Request By" and "Contractor" are fixed to Scorpio's own name on the source template
+  // (BOND_REQUESTOR_NAME), not fields to fill in — shown in the export but not editable here.
+
+  function getBondRequest(project) {
+    project.bondRequest = project.bondRequest || {};
+    return project.bondRequest;
+  }
+
+  // A once-off seed from whichever of the New Opportunity Form/Precon Start Up Form has data,
+  // not a live link — editing a field here doesn't get overwritten later the way NOF's linked
+  // fields do, since a bond request is a point-in-time snapshot, not something that should
+  // silently drift if the source form changes after the request is sent.
+  function applyBondDefaults(project) {
+    const data = getBondRequest(project);
+    const opp = project.opportunity || {};
+    if (data.dateOfRequest === undefined) data.dateOfRequest = todayIso();
+    if (data.ownerObligeeNameAddress === undefined) {
+      const addressLine = [opp.ownerAddress, opp.ownerCityStateZip].filter(Boolean).join(", ");
+      data.ownerObligeeNameAddress = [opp.ownerCompany, addressLine].filter(Boolean).join("\n");
+    }
+    if (data.architect === undefined) data.architect = opp.architectCo || "";
+    if (data.scopeOfWork === undefined) data.scopeOfWork = project.name || "";
+    BOND_FIELDS.forEach((f) => {
+      if (data[f.id] === undefined) data[f.id] = f.defaultValue || "";
+    });
+  }
+
+  function countBondFieldsFilled(project) {
+    const data = getBondRequest(project);
+    const filled = BOND_FIELDS.filter((f) => {
+      const v = data[f.id];
+      return v !== undefined && v !== null && String(v).trim() !== "";
+    }).length;
+    return { filled, total: BOND_FIELDS.length };
+  }
+
+  function renderBondRequestAffordance(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "item-inline-actions";
+
+    if (!isPrimaryFormStarted(project)) {
+      const hint = document.createElement("span");
+      hint.className = "nof-progress-inline";
+      hint.textContent = "Fill out the New Opportunity Form or Precon Start Up Form first to unlock this";
+      wrap.appendChild(hint);
+      return wrap;
+    }
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm";
+    btn.textContent = "Fill Out Bond Request";
+    btn.addEventListener("click", () => openBondDialog(project));
+
+    const { filled, total } = countBondFieldsFilled(project);
+    const hint = document.createElement("span");
+    hint.className = "nof-progress-inline";
+    hint.textContent = filled > 0 ? `${filled}/${total} fields filled` : `${total} fields — not started`;
+
+    wrap.appendChild(btn);
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function openBondDialog(project) {
+    closeAllDialogs(bondDialog);
+    bondProjectId = project.id;
+    applyBondDefaults(project);
+    saveState();
+    bondProjectName.textContent = `${project.name} — ${project.location}`;
+    renderBondBody(project);
+    updateBondProgressLabel(project);
+    bondDialog.showModal();
+  }
+
+  function updateBondProgressLabel(project) {
+    const { filled, total } = countBondFieldsFilled(project);
+    bondProgress.textContent = `${filled} of ${total} fields filled`;
+  }
+
+  function renderBondBody(project) {
+    bondBody.innerHTML = "";
+
+    const fixedNote = document.createElement("p");
+    fixedNote.className = "pdpo-linked-note";
+    fixedNote.textContent = `Request By / Contractor: ${BOND_REQUESTOR_NAME} (fixed on the source form).`;
+    bondBody.appendChild(fixedNote);
+
+    let lastSection = null;
+    let rowBuffer = [];
+    const flushRow = () => {
+      if (!rowBuffer.length) return;
+      const rowEl = document.createElement("div");
+      rowEl.className = "nof-row";
+      rowEl.appendChild(rowBuffer[0]);
+      rowEl.appendChild(rowBuffer[1] || emptyOpportunityField());
+      bondBody.appendChild(rowEl);
+      rowBuffer = [];
+    };
+
+    // Date of Request has no section (renders on its own full-width row up top).
+    const dateField = renderBondField(project, BOND_FIELDS[0]);
+    const dateRow = document.createElement("div");
+    dateRow.className = "nof-row";
+    dateRow.appendChild(dateField);
+    dateRow.appendChild(emptyOpportunityField());
+    bondBody.appendChild(dateRow);
+
+    BOND_FIELDS.slice(1).forEach((field) => {
+      if (field.section !== lastSection) {
+        flushRow();
+        const title = document.createElement("div");
+        title.className = "nof-section-title";
+        title.textContent = field.section;
+        bondBody.appendChild(title);
+        lastSection = field.section;
+      }
+      rowBuffer.push(renderBondField(project, field));
+      if (rowBuffer.length === 2) flushRow();
+    });
+    flushRow();
+
+    if (BOND_FIELDS.some((f) => f.section === "If Request Is for a Performance/Payment Bond")) {
+      const attachNote = document.createElement("p");
+      attachNote.className = "pdpo-linked-note";
+      attachNote.textContent = "Please attach a copy of the contract (it doesn't have to be signed) — the Contract uploaded at the top of the page works for this.";
+      bondBody.appendChild(attachNote);
+    }
+  }
+
+  function renderBondField(project, field) {
+    const data = getBondRequest(project);
+    const wrap = document.createElement("div");
+    wrap.className = "nof-field";
+
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    labelText.textContent = field.label;
+    label.appendChild(labelText);
+
+    let input;
+    if (field.type === "textarea") {
+      input = document.createElement("textarea");
+      input.value = data[field.id] || "";
+    } else {
+      input = document.createElement("input");
+      input.type = field.type === "date" ? "date" : "text";
+      input.value = data[field.id] || "";
+    }
+    input.id = "bond_" + field.id;
+    input.addEventListener("input", () => {
+      data[field.id] = input.value;
+      saveState();
+      updateBondProgressLabel(project);
+    });
+
+    label.appendChild(input);
+    wrap.appendChild(label);
+    return wrap;
+  }
+
+  async function handleExportBond() {
+    const project = state.projects.find((p) => p.id === bondProjectId);
+    if (!project) return;
+    if (typeof ExcelJS === "undefined") {
+      await miniAlert("The Excel export library didn't load (check your internet connection) — your entries are still saved in the app.");
+      return;
+    }
+    const exportBtn = document.getElementById("exportBondBtn");
+    const originalLabel = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = "Exporting…";
+    try {
+      const blob = await buildBondWorkbookBlob(project);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${sanitizeFilename(project.name)}_Bond_Request.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = originalLabel;
+    }
+  }
+
+  async function buildBondWorkbookBlob(project) {
+    const data = getBondRequest(project);
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Scorpio Preconstruction — CM Startup Board";
+    wb.created = new Date();
+    const ws = wb.addWorksheet("Bond Request");
+    ws.columns = [{ width: 38 }, { width: 40 }];
+
+    let row = 1;
+    ws.getCell(`A${row}`).value = "REQUEST FOR BOND";
+    ws.getCell(`A${row}`).font = { bold: true, size: 13 };
+    row += 2;
+
+    ws.getCell(`A${row}`).value = "Request By (Company Name)";
+    ws.getCell(`A${row}`).font = { bold: true };
+    ws.getCell(`B${row}`).value = BOND_REQUESTOR_NAME;
+    row++;
+    ws.getCell(`A${row}`).value = "Contractor";
+    ws.getCell(`A${row}`).font = { bold: true };
+    ws.getCell(`B${row}`).value = BOND_REQUESTOR_NAME;
+    row++;
+    ws.getCell(`A${row}`).value = "Project Name";
+    ws.getCell(`A${row}`).font = { bold: true };
+    ws.getCell(`B${row}`).value = project.name;
+    row++;
+
+    let lastSection = null;
+    BOND_FIELDS.forEach((f) => {
+      if (f.section && f.section !== lastSection) {
+        row++;
+        ws.getCell(`A${row}`).value = f.section.toUpperCase();
+        ws.getCell(`A${row}`).font = { bold: true, size: 11 };
+        row++;
+        lastSection = f.section;
+      }
+      ws.getCell(`A${row}`).value = f.label;
+      ws.getCell(`A${row}`).font = { bold: true };
+      ws.getCell(`B${row}`).value = data[f.id] || "";
+      row++;
+    });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  }
+
+  // ---------- Builder's Risk Quote Request ----------
+  // A meaningful subset of the real HUB International "Builders Risk Application" (a 124-field
+  // fillable PDF) — insurance elections, deductibles, construction materials, and additional
+  // interests still have to be filled in on the real form by hand, since none of that is data
+  // this app tracks.
+
+  function getBuildersRisk(project) {
+    project.buildersRisk = project.buildersRisk || {};
+    return project.buildersRisk;
+  }
+
+  function applyBuildersRiskDefaults(project) {
+    const data = getBuildersRisk(project);
+    const opp = project.opportunity || {};
+    if (data.insuredName === undefined) data.insuredName = opp.ownerCompany || "";
+    if (data.insuredAddress === undefined) data.insuredAddress = opp.ownerAddress || "";
+    if (data.insuredCityStateZip === undefined) data.insuredCityStateZip = opp.ownerCityStateZip || "";
+    if (data.projectAddress === undefined) data.projectAddress = opp.jobsiteAddress || "";
+    if (data.squareFootage === undefined) data.squareFootage = opp.projectSqFt || "";
+    if (data.totalCompletedValue === undefined) data.totalCompletedValue = opp.estProjectValue || "";
+    if (data.policyEffectiveDate === undefined) data.policyEffectiveDate = project.activateDate || "";
+    if (data.expectedCompletionDate === undefined) data.expectedCompletionDate = opp.estCompletionDate || "";
+    BUILDERS_RISK_FIELDS.forEach((f) => {
+      if (data[f.id] === undefined) data[f.id] = f.defaultValue || "";
+    });
+  }
+
+  function countBuildersRiskFieldsFilled(project) {
+    const data = getBuildersRisk(project);
+    const filled = BUILDERS_RISK_FIELDS.filter((f) => {
+      const v = data[f.id];
+      return v !== undefined && v !== null && String(v).trim() !== "";
+    }).length;
+    return { filled, total: BUILDERS_RISK_FIELDS.length };
+  }
+
+  function renderBuildersRiskAffordance(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "item-inline-actions";
+
+    if (!isPrimaryFormStarted(project)) {
+      const hint = document.createElement("span");
+      hint.className = "nof-progress-inline";
+      hint.textContent = "Fill out the New Opportunity Form or Precon Start Up Form first to unlock this";
+      wrap.appendChild(hint);
+      return wrap;
+    }
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm";
+    btn.textContent = "Fill Out Builder's Risk Request";
+    btn.addEventListener("click", () => openBuildersRiskDialog(project));
+
+    const { filled, total } = countBuildersRiskFieldsFilled(project);
+    const hint = document.createElement("span");
+    hint.className = "nof-progress-inline";
+    hint.textContent = filled > 0 ? `${filled}/${total} fields filled` : `${total} fields — not started`;
+
+    wrap.appendChild(btn);
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function openBuildersRiskDialog(project) {
+    closeAllDialogs(buildersRiskDialog);
+    buildersRiskProjectId = project.id;
+    applyBuildersRiskDefaults(project);
+    saveState();
+    buildersRiskProjectName.textContent = `${project.name} — ${project.location}`;
+    renderBuildersRiskBody(project);
+    updateBuildersRiskProgressLabel(project);
+    buildersRiskDialog.showModal();
+  }
+
+  function updateBuildersRiskProgressLabel(project) {
+    const { filled, total } = countBuildersRiskFieldsFilled(project);
+    buildersRiskProgress.textContent = `${filled} of ${total} fields filled — the rest of the official application ` +
+      `(materials, coverage elections, deductibles, additional interests) still has to be filled in by hand`;
+  }
+
+  function renderBuildersRiskBody(project) {
+    buildersRiskBody.innerHTML = "";
+    for (let i = 0; i < BUILDERS_RISK_FIELDS.length; i += 2) {
+      const row = document.createElement("div");
+      row.className = "nof-row";
+      row.appendChild(renderBuildersRiskField(project, BUILDERS_RISK_FIELDS[i]));
+      row.appendChild(BUILDERS_RISK_FIELDS[i + 1] ? renderBuildersRiskField(project, BUILDERS_RISK_FIELDS[i + 1]) : emptyOpportunityField());
+      buildersRiskBody.appendChild(row);
+    }
+  }
+
+  function renderBuildersRiskField(project, field) {
+    const data = getBuildersRisk(project);
+    const wrap = document.createElement("div");
+    wrap.className = "nof-field";
+
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    labelText.textContent = field.label;
+    label.appendChild(labelText);
+
+    const input = document.createElement("input");
+    input.type = field.type === "date" ? "date" : "text";
+    input.value = data[field.id] || "";
+    input.id = "buildersRisk_" + field.id;
+    input.addEventListener("input", () => {
+      data[field.id] = input.value;
+      saveState();
+      updateBuildersRiskProgressLabel(project);
+    });
+
+    label.appendChild(input);
+    wrap.appendChild(label);
+    return wrap;
+  }
+
+  async function handleExportBuildersRisk() {
+    const project = state.projects.find((p) => p.id === buildersRiskProjectId);
+    if (!project) return;
+    if (typeof ExcelJS === "undefined") {
+      await miniAlert("The Excel export library didn't load (check your internet connection) — your entries are still saved in the app.");
+      return;
+    }
+    const exportBtn = document.getElementById("exportBuildersRiskBtn");
+    const originalLabel = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = "Exporting…";
+    try {
+      const blob = await buildBuildersRiskWorkbookBlob(project);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${sanitizeFilename(project.name)}_Builders_Risk_Quote_Request.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = originalLabel;
+    }
+  }
+
+  async function buildBuildersRiskWorkbookBlob(project) {
+    const data = getBuildersRisk(project);
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Scorpio Preconstruction — CM Startup Board";
+    wb.created = new Date();
+    const ws = wb.addWorksheet("Builders Risk Quote Request");
+    ws.columns = [{ width: 44 }, { width: 40 }];
+
+    let row = 1;
+    ws.getCell(`A${row}`).value = "BUILDERS RISK QUOTE REQUEST — KNOWN FIELDS";
+    ws.getCell(`A${row}`).font = { bold: true, size: 13 };
+    row++;
+    ws.getCell(`A${row}`).value = "The rest of the official HUB International application (materials, coverage " +
+      "elections, deductibles, additional interests) still needs to be filled in by hand.";
+    ws.getCell(`A${row}`).alignment = { wrapText: true };
+    row += 2;
+
+    BUILDERS_RISK_FIELDS.forEach((f) => {
+      ws.getCell(`A${row}`).value = f.label;
+      ws.getCell(`A${row}`).font = { bold: true };
+      ws.getCell(`B${row}`).value = data[f.id] || "";
+      row++;
+    });
+
+    const buffer = await wb.xlsx.writeBuffer();
+    return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   }
 
   // ---------- 6S Level Assignments / Bid Packages ----------
@@ -2393,23 +3132,30 @@
     return new File([mergedBytes], mergedName, { type: "application/pdf" });
   }
 
-  async function processConformedSetUpload(project, fileList) {
-    const pdfjsLib = await waitForPdfJs();
-    if (!pdfjsLib) throw new Error("The PDF-reading library didn't load — check your internet connection");
+  // Drawings and/or Specifications changing re-runs extraction across whichever of the two are
+  // currently attached, combined — a company/address block or a "Label: Value" line can live in
+  // either one, so both get scanned together rather than treated as separate documents.
+  const documentExtractionResults = new Map();
 
-    const files = Array.from(fileList);
-    const sourceNames = files.map((f) => f.name);
-    const file = files.length > 1 ? await mergeConformedSetFiles(files) : files[0];
+  async function runDocumentExtraction(project) {
+    const drawingsDoc = getProjectDocument(project, "drawings");
+    const specsDoc = getProjectDocument(project, "specifications");
+    const sourceDocs = [drawingsDoc, specsDoc].filter(Boolean);
+    if (!sourceDocs.length) return;
 
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
-    const { text, pages } = await extractPdfText(pdfDoc);
-    const matches = extractNofFieldsFromText(text, pages);
+    let combinedText = "";
+    let combinedPages = [];
+    for (const doc of sourceDocs) {
+      const extracted = await extractPdfText(doc.pdfDoc);
+      combinedText += extracted.text + "\n";
+      combinedPages = combinedPages.concat(extracted.pages);
+    }
+    const matches = extractNofFieldsFromText(combinedText, combinedPages);
 
-    // The checklist affordance lets this run before the Opportunity Form has ever been
-    // opened, so the project-linked/placeholder defaults (dateOwnerProject's "[Owner]" text
-    // included) may not exist yet — apply them first so the substitution below has something
-    // to work with, and so the linked-field badges are already correct on first open.
+    // This can run before the Opportunity Form has ever been opened, so the project-linked/
+    // placeholder defaults (dateOwnerProject's "[Owner]" text included) may not exist yet —
+    // apply them first so the substitution below has something to work with, and so the
+    // linked-field badges are already correct on first open.
     applyOpportunityDefaults(project);
     const data = project.opportunity;
     data._extracted = data._extracted || {};
@@ -2438,22 +3184,46 @@
       matchedFieldIds.push("dateOwnerProject");
     }
 
-    nofConformedSetDocs.set(project.id, {
-      file,
-      sourceNames,
-      pdfDoc,
-      numPages: pdfDoc.numPages,
-      lastExtraction: { matchedFieldIds, hasText: text.trim().length > 0 },
-    });
+    // Same swap for the Precon Start Up Form's own composite identifier field, in case a
+    // contract's already been uploaded and that's the active form for this project.
+    applyPreconDefaults(project);
+    const pdata = project.precon;
+    if (matches.ownerCompany && typeof pdata.projectIdentifier === "string" && pdata.projectIdentifier.includes("[Owner]")) {
+      pdata.projectIdentifier = pdata.projectIdentifier.replace("[Owner]", matches.ownerCompany);
+    }
 
+    documentExtractionResults.set(project.id, { matchedFieldIds, hasText: combinedText.trim().length > 0 });
     saveState();
   }
 
-  // Shared by the checklist affordance and the Opportunity dialog's own upload row — both
-  // read/write the same nofConformedSetDocs entry, so uploading from either place shows up
-  // in both. `onUpdate` lets each caller decide what to re-render after a file is processed.
-  function renderConformedSetUploadRow(project, onUpdate) {
-    const doc = nofConformedSetDocs.get(project.id);
+  async function processDocumentSlotUpload(project, slotId, fileList) {
+    const pdfjsLib = await waitForPdfJs();
+    if (!pdfjsLib) throw new Error("The PDF-reading library didn't load — check your internet connection");
+
+    const files = Array.from(fileList);
+    const sourceNames = files.map((f) => f.name);
+    const file = files.length > 1 ? await mergeConformedSetFiles(files) : files[0];
+
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+    projectDocuments.set(documentKey(project.id, slotId), { file, sourceNames, pdfDoc, numPages: pdfDoc.numPages });
+
+    if (slotId === "contract") {
+      // The contract's mere presence is the trigger — see itemApplies's "HasContract"/
+      // "NoContract" conditions — so this has to be persisted, not just kept in the
+      // in-memory-only projectDocuments map, or reloading the page would silently switch the
+      // project back to the New Opportunity Form path.
+      project.contractUploaded = true;
+      project.contractFileName = sourceNames.length > 1 ? sourceNames.join(" + ") : sourceNames[0];
+      saveState();
+    } else {
+      await runDocumentExtraction(project);
+      if (slotId === "drawings") await ensureKickoffThumbnailsFromDrawings(project);
+    }
+  }
+
+  function renderDocumentUploadRow(project, slotId, label, onUpdate) {
+    const doc = getProjectDocument(project, slotId);
 
     const wrap = document.createElement("div");
     wrap.className = "nof-doc-upload-wrap";
@@ -2461,15 +3231,15 @@
     const row = document.createElement("div");
     row.className = "kickoff-upload-row";
 
-    const label = document.createElement("span");
-    label.className = "kickoff-upload-label";
-    label.textContent = "Conformed Set (PDF)";
+    const labelEl = document.createElement("span");
+    labelEl.className = "kickoff-upload-label";
+    labelEl.textContent = label;
 
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "application/pdf";
     input.multiple = true;
-    input.title = "Select multiple files (drawings, specs, ITB) to merge them into one conformed set automatically";
+    input.title = "Select multiple files to merge them into one PDF automatically";
 
     const status = document.createElement("span");
     status.className = "kickoff-upload-status";
@@ -2482,14 +3252,14 @@
       if (!files || !files.length) return;
       status.textContent = files.length > 1 ? `Merging ${files.length} files…` : "Reading " + files[0].name + "…";
       try {
-        await processConformedSetUpload(project, files);
+        await processDocumentSlotUpload(project, slotId, files);
       } catch (err) {
         await miniAlert("Couldn't read that PDF: " + (err && err.message ? err.message : err));
       }
       onUpdate();
     });
 
-    row.appendChild(label);
+    row.appendChild(labelEl);
     row.appendChild(input);
     row.appendChild(status);
 
@@ -2498,39 +3268,71 @@
       viewBtn.type = "button";
       viewBtn.className = "btn btn-sm";
       viewBtn.textContent = "View Pages";
-      viewBtn.addEventListener("click", () => openNofDocViewer(project));
+      viewBtn.addEventListener("click", () => openNofDocViewer(project, slotId));
       row.appendChild(viewBtn);
     }
 
     wrap.appendChild(row);
 
-    const bluebeamNote = document.createElement("div");
-    bluebeamNote.className = "nof-doc-note";
-    bluebeamNote.textContent = "Uploading here (single file or multiple) only combines pages into one PDF — it doesn't add " +
-      "Bluebeam bookmarks or page labels, so that part still has to be done by hand in Bluebeam.";
-    wrap.appendChild(bluebeamNote);
-
     if (doc && doc.sourceNames.length > 1) {
       const mergedNote = document.createElement("div");
       mergedNote.className = "nof-doc-note";
-      mergedNote.textContent = `Merged from ${doc.sourceNames.length} files, in this order: ${doc.sourceNames.join(", ")}.`;
+      mergedNote.textContent = `Merged from ${doc.sourceNames.length} files, in this order: ${doc.sourceNames.join(", ")}. ` +
+        `This only combines pages — it doesn't add Bluebeam bookmarks or page labels, so that part still has to be done by hand in Bluebeam.`;
       wrap.appendChild(mergedNote);
     }
 
-    if (doc && doc.lastExtraction) {
-      const { matchedFieldIds, hasText } = doc.lastExtraction;
+    return wrap;
+  }
+
+  function renderDocumentsSection(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "documents-section";
+
+    const title = document.createElement("div");
+    title.className = "documents-section-title";
+    title.textContent = "Documents";
+    wrap.appendChild(title);
+
+    const intro = document.createElement("p");
+    intro.className = "nof-doc-intro";
+    intro.textContent = "Upload once here — every form on this board that reads from documents (New Opportunity Form, " +
+      "Precon Start Up Form, Kickoff/Bid Day Package) pulls from these same three slots. Any design stage works for " +
+      "Drawings. If a signed Contract is uploaded, the Precon Start Up Form replaces the New Opportunity Form for this " +
+      "project — the Bond Request and Builder's Risk Request also read from whichever of those is in use.";
+    wrap.appendChild(intro);
+
+    const onUpdate = () => {
+      renderProjectList();
+      renderActiveProject();
+      if (opportunityDialog.open && opportunityProjectId === project.id) {
+        renderOpportunityBody(project);
+        updateOpportunityProgressLabel(project);
+      }
+      if (preconDialog.open && preconProjectId === project.id) {
+        renderPreconBody(project);
+        updatePreconProgressLabel(project);
+      }
+    };
+
+    DOCUMENT_SLOTS.forEach((slot) => {
+      wrap.appendChild(renderDocumentUploadRow(project, slot.id, slot.label, onUpdate));
+    });
+
+    const extraction = documentExtractionResults.get(project.id);
+    if (extraction) {
+      const { matchedFieldIds, hasText } = extraction;
       const names = matchedFieldIds.map(nofFieldLabelFor);
       const note = document.createElement("div");
       note.className = "nof-doc-note";
       if (names.length > 0) {
-        note.textContent = `Pulled ${names.length} field${names.length === 1 ? "" : "s"} from the conformed ` +
-          `set: ${names.join(", ")}. Only fields that were still blank got filled in — please verify them.`;
+        note.textContent = `Pulled ${names.length} field${names.length === 1 ? "" : "s"} from Drawings/Specifications: ` +
+          `${names.join(", ")}. Only fields that were still blank got filled in — please verify them.`;
       } else if (!hasText) {
-        note.textContent = `No selectable text found in this file — it's likely fully scanned/rasterized. ` +
-          `Use "View Pages" to read it and fill in fields by hand.`;
+        note.textContent = `No selectable text found — the drawings are likely fully scanned/rasterized. ` +
+          `Use "View Pages" to read them and fill in fields by hand.`;
       } else {
-        note.textContent = `Found text in this file, but couldn't confidently match it to any fields. ` +
-          `Use "View Pages" to read it and fill in by hand.`;
+        note.textContent = `Found text, but couldn't confidently match it to any fields. Use "View Pages" to read it and fill in by hand.`;
       }
       wrap.appendChild(note);
     }
@@ -2538,19 +3340,51 @@
     return wrap;
   }
 
-  function openNofDocViewer(project) {
-    // Deliberately does NOT closeAllDialogs — nests on top of the Opportunity dialog like the
-    // Kickoff zoom nests on top of the Kickoff dialog (and can be opened without the
-    // Opportunity dialog being open at all, from the checklist affordance directly).
-    const doc = nofConformedSetDocs.get(project.id);
+  // Shown inside the New Opportunity Form and Precon Start Up Form dialogs — both extract from
+  // the same central Drawings/Specifications upload, so instead of their own upload control
+  // they just point at it and offer a shortcut to view pages if something's already attached.
+  function renderSourceDocsNote(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "nof-doc-upload-wrap";
+
+    const intro = document.createElement("p");
+    intro.className = "nof-doc-intro";
+    intro.textContent = "Fields below are filled in from the Drawings/Specifications uploaded at the top of the page " +
+      "— only fields that are still blank get filled in, and it's a best-effort text scan, not real reading " +
+      "comprehension, so always double-check anything pulled in.";
+    wrap.appendChild(intro);
+
+    const row = document.createElement("div");
+    row.className = "item-inline-actions";
+    ["drawings", "specifications"].forEach((slotId) => {
+      const doc = getProjectDocument(project, slotId);
+      if (!doc) return;
+      const slotLabel = (DOCUMENT_SLOTS.find((s) => s.id === slotId) || {}).label;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-sm";
+      btn.textContent = `View ${slotLabel} Pages`;
+      btn.addEventListener("click", () => openNofDocViewer(project, slotId));
+      row.appendChild(btn);
+    });
+    if (row.children.length) wrap.appendChild(row);
+
+    return wrap;
+  }
+
+  function openNofDocViewer(project, slotId) {
+    // Deliberately does NOT closeAllDialogs — nests on top of whichever dialog is already open,
+    // the same way the Kickoff zoom nests on top of the Kickoff dialog (and can be opened
+    // without any other dialog open at all, straight from the Documents section).
+    const doc = getProjectDocument(project, slotId);
     if (!doc) return;
-    nofDocViewerState = { projectId: project.id, pageIndex: 0 };
+    nofDocViewerState = { projectId: project.id, slotId, pageIndex: 0 };
     nofDocViewerDialog.showModal();
     renderNofDocViewerPage();
   }
 
   function stepNofDocViewer(delta) {
-    const doc = nofConformedSetDocs.get(nofDocViewerState.projectId);
+    const doc = getProjectDocument({ id: nofDocViewerState.projectId }, nofDocViewerState.slotId);
     if (!doc) return;
     const next = nofDocViewerState.pageIndex + delta;
     if (next < 0 || next >= doc.numPages) return;
@@ -2559,11 +3393,12 @@
   }
 
   async function renderNofDocViewerPage() {
-    const doc = nofConformedSetDocs.get(nofDocViewerState.projectId);
+    const doc = getProjectDocument({ id: nofDocViewerState.projectId }, nofDocViewerState.slotId);
     if (!doc) return;
     const pageIndex = nofDocViewerState.pageIndex;
+    const slotLabel = (DOCUMENT_SLOTS.find((s) => s.id === nofDocViewerState.slotId) || {}).label || "Document";
 
-    nofDocViewerLabel.textContent = `Conformed set — page ${pageIndex + 1} of ${doc.numPages}`;
+    nofDocViewerLabel.textContent = `${slotLabel} — page ${pageIndex + 1} of ${doc.numPages}`;
     document.getElementById("nofDocViewerPrev").disabled = pageIndex <= 0;
     document.getElementById("nofDocViewerNext").disabled = pageIndex >= doc.numPages - 1;
 
@@ -2576,22 +3411,6 @@
     await page.render({ canvasContext: nofDocViewerCanvas.getContext("2d"), viewport }).promise;
   }
 
-  function renderConformedSetAffordance(project) {
-    const wrap = document.createElement("div");
-    wrap.className = "conformed-set-affordance";
-    wrap.appendChild(renderConformedSetUploadRow(project, () => {
-      renderProjectList();
-      renderActiveProject();
-      // If the Opportunity dialog happens to already be open for this project, refresh it too
-      // so newly-pulled fields and badges show up without needing to close and reopen it.
-      if (opportunityDialog.open && opportunityProjectId === project.id) {
-        renderOpportunityBody(project);
-        updateOpportunityProgressLabel(project);
-      }
-    }));
-    return wrap;
-  }
-
   function countOpportunityFieldsFilled(project) {
     const data = project.opportunity || {};
     const filled = NOF_ALL_FIELDS.filter((f) => {
@@ -2599,6 +3418,13 @@
       return v !== undefined && v !== null && String(v).trim() !== "";
     }).length;
     return { filled, total: NOF_ALL_FIELDS.length };
+  }
+
+  // Gates the Bond Request and Builder's Risk Request affordances — per Rachel's workflow,
+  // both only make sense once whichever primary form applies to this project (New Opportunity
+  // Form, or Precon Start Up Form if a contract's been uploaded) actually has something in it.
+  function isPrimaryFormStarted(project) {
+    return countOpportunityFieldsFilled(project).filled > 0 || countPreconFieldsFilled(project).filled > 0;
   }
 
   function countOpportunityLinkedFields(project) {
@@ -2672,26 +3498,7 @@
   function renderOpportunityBody(project) {
     opportunityFormBody.innerHTML = "";
 
-    const sourceDocsTitle = document.createElement("div");
-    sourceDocsTitle.className = "nof-section-title";
-    sourceDocsTitle.textContent = "Conformed Set (optional)";
-    opportunityFormBody.appendChild(sourceDocsTitle);
-
-    const sourceDocsIntro = document.createElement("p");
-    sourceDocsIntro.className = "nof-doc-intro";
-    sourceDocsIntro.textContent = "Upload the conformed set (drawings + specifications + ITB) " +
-      "from the architect — any design stage works. Received them as separate files? Select " +
-      "them all at once and they'll be merged into one PDF automatically. Any matching fields " +
-      "below that are still blank will be filled in from it. This is a best-effort text scan, " +
-      "not real reading comprehension — always double-check anything pulled in. Purely scanned " +
-      "drawing sheets usually have no extractable text at all, though spec/ITB pages in the same set often do.";
-    opportunityFormBody.appendChild(sourceDocsIntro);
-
-    opportunityFormBody.appendChild(renderConformedSetUploadRow(project, () => {
-      renderProjectList();
-      renderOpportunityBody(project);
-      updateOpportunityProgressLabel(project);
-    }));
+    opportunityFormBody.appendChild(renderSourceDocsNote(project));
 
     const linkedCount = countOpportunityLinkedFields(project);
     if (linkedCount > 0) {
