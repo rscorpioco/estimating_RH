@@ -51,6 +51,11 @@
   const teamDialog = document.getElementById("teamDialog");
   const teamBody = document.getElementById("teamBody");
 
+  const pdpoDialog = document.getElementById("pdpoDialog");
+  const pdpoProjectName = document.getElementById("pdpoProjectName");
+  const pdpoBody = document.getElementById("pdpoBody");
+  const pdpoProgress = document.getElementById("pdpoProgress");
+
   const miniDialog = document.getElementById("miniDialog");
   const miniDialogForm = document.getElementById("miniDialogForm");
   const miniDialogMessage = document.getElementById("miniDialogMessage");
@@ -98,6 +103,7 @@
   let opportunityProjectId = null;
   let kickoffProjectId = null;
   let levelProjectId = null;
+  let pdpoProjectId = null;
   // The conformed drawing set, its rendered page thumbnails, each page's tagged category, and
   // the parsed pdf.js document (kept around so the zoom view can re-render any page on demand)
   // are held in memory only (not persisted to localStorage — a drawing set can be many MB),
@@ -220,7 +226,7 @@
   // any other already-open dialog — without this, opening a second one stacks on top of the
   // first, and closing the top one leaves the other sitting there looking "stuck" open.
   function closeAllDialogs(except) {
-    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog].forEach((d) => {
+    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog, pdpoDialog].forEach((d) => {
       if (d && d !== except && d.open) d.close();
     });
   }
@@ -287,6 +293,13 @@
     document.getElementById("teamMembersBtn").addEventListener("click", openTeamDialog);
     document.getElementById("closeTeamBtn").addEventListener("click", () => teamDialog.close());
     document.getElementById("closeTeamBtn2").addEventListener("click", () => teamDialog.close());
+
+    document.getElementById("closePdpoBtn").addEventListener("click", () => pdpoDialog.close());
+    document.getElementById("closePdpoBtn2").addEventListener("click", () => pdpoDialog.close());
+    pdpoDialog.addEventListener("close", () => {
+      renderProjectList();
+      renderActiveProject();
+    });
 
     renderProjectList();
     renderActiveProject();
@@ -640,6 +653,10 @@
 
     if (item.sub && item.sub.length) {
       wrap.appendChild(renderSubList(item.sub));
+    }
+
+    if (item.id === "act-pdpo-coordination") {
+      wrap.appendChild(renderPdPoCoordinationAffordance(project));
     }
 
     if (item.id === "act-conformed-set") {
@@ -1393,6 +1410,215 @@
     targetList.push(person);
     saveState();
     return person;
+  }
+
+  // ---------- PD/PO Coordination ----------
+
+  function getPdPoCoordination(project) {
+    project.pdpoCoordination = project.pdpoCoordination || { fields: {}, team: {} };
+    project.pdpoCoordination.fields = project.pdpoCoordination.fields || {};
+    project.pdpoCoordination.team = project.pdpoCoordination.team || {};
+    return project.pdpoCoordination;
+  }
+
+  function countPdPoFieldsFilled(project) {
+    const data = getPdPoCoordination(project);
+    const fieldsFilled = PDPO_FIELDS.filter((f) => {
+      const v = data.fields[f.id];
+      return v !== undefined && v !== null && String(v).trim() !== "";
+    }).length;
+    const teamFilled = PDPO_TEAM_ROLES.filter((r) => data.team[r.id]).length;
+    return {
+      fieldsFilled: fieldsFilled + teamFilled,
+      fieldsTotal: PDPO_FIELDS.length + PDPO_TEAM_ROLES.length,
+    };
+  }
+
+  function renderPdPoCoordinationAffordance(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "item-inline-actions";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm";
+    btn.textContent = "Fill Out PD/PO Coordination";
+    btn.addEventListener("click", () => openPdPoDialog(project));
+
+    const { fieldsFilled, fieldsTotal } = countPdPoFieldsFilled(project);
+    const hint = document.createElement("span");
+    hint.className = "nof-progress-inline";
+    hint.textContent = fieldsFilled > 0 ? `${fieldsFilled}/${fieldsTotal} fields filled` : `${fieldsTotal} fields — not started`;
+
+    wrap.appendChild(btn);
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function openPdPoDialog(project) {
+    closeAllDialogs(pdpoDialog);
+    pdpoProjectId = project.id;
+    pdpoProjectName.textContent = `${project.name} — ${project.location}`;
+    renderPdPoBody(project);
+    updatePdPoProgressLabel(project);
+    pdpoDialog.showModal();
+  }
+
+  function updatePdPoProgressLabel(project) {
+    const { fieldsFilled, fieldsTotal } = countPdPoFieldsFilled(project);
+    pdpoProgress.textContent = `${fieldsFilled} of ${fieldsTotal} fields filled`;
+  }
+
+  function renderPdPoBody(project) {
+    pdpoBody.innerHTML = "";
+
+    let lastSection = null;
+    let rowBuffer = [];
+    const flushRow = () => {
+      if (!rowBuffer.length) return;
+      const rowEl = document.createElement("div");
+      rowEl.className = "nof-row";
+      rowEl.appendChild(rowBuffer[0]);
+      rowEl.appendChild(rowBuffer[1] || emptyOpportunityField());
+      pdpoBody.appendChild(rowEl);
+      rowBuffer = [];
+    };
+    PDPO_FIELDS.forEach((field) => {
+      if (field.section !== lastSection) {
+        flushRow();
+        const title = document.createElement("div");
+        title.className = "nof-section-title";
+        title.textContent = field.section;
+        pdpoBody.appendChild(title);
+        lastSection = field.section;
+      }
+      rowBuffer.push(renderPdPoField(project, field));
+      if (rowBuffer.length === 2) flushRow();
+    });
+    flushRow();
+
+    pdpoBody.appendChild(renderPdPoContactInfoSection(project));
+    pdpoBody.appendChild(renderPdPoTeamSection(project));
+  }
+
+  function renderPdPoField(project, field) {
+    const data = getPdPoCoordination(project).fields;
+    const wrap = document.createElement("div");
+    wrap.className = "nof-field";
+
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    labelText.textContent = field.label;
+    label.appendChild(labelText);
+
+    let input;
+    if (field.type === "select") {
+      input = document.createElement("select");
+      input.add(new Option("—", ""));
+      field.options.forEach((opt) => input.add(new Option(opt, opt)));
+      input.value = data[field.id] || "";
+    } else if (field.type === "textarea") {
+      input = document.createElement("textarea");
+      input.value = data[field.id] || "";
+    } else {
+      input = document.createElement("input");
+      input.type = field.type === "date" ? "date" : "text";
+      input.value = data[field.id] || "";
+    }
+    input.id = "pdpo_" + field.id;
+    input.addEventListener(field.type === "select" ? "change" : "input", () => {
+      data[field.id] = input.value;
+      saveState();
+      updatePdPoProgressLabel(project);
+    });
+
+    label.appendChild(input);
+    wrap.appendChild(label);
+    return wrap;
+  }
+
+  // Client/Architect/Engineer contact info is read straight off the New Opportunity Form's
+  // Owner/AEC section rather than re-entered here — one source of truth, and it stays current
+  // as the NOF gets filled in or corrected.
+  function renderPdPoContactInfoSection(project) {
+    const wrap = document.createElement("div");
+
+    const title = document.createElement("div");
+    title.className = "nof-section-title";
+    title.textContent = "Important Contact Information";
+    wrap.appendChild(title);
+
+    const note = document.createElement("p");
+    note.className = "pdpo-linked-note";
+    note.textContent = "Pulled live from the New Opportunity Form's Owner/AEC section — fill that out to populate this.";
+    wrap.appendChild(note);
+
+    const opp = project.opportunity || {};
+    const rows = [
+      { label: "Client", co: opp.ownerCompany, name: opp.ownerContactName, phone: opp.ownerPhone, email: opp.ownerEmail },
+      { label: "Architect", co: opp.architectCo, name: opp.architectContactName, phone: opp.architectPhone, email: opp.architectEmail },
+      { label: "Civil Engineer", co: opp.civilEngineerCo, name: opp.civilEngineerName },
+      { label: "Structural Engineer", co: opp.structuralEngineerCo, name: opp.structuralEngineerName },
+      { label: "MEPFP Engineer", co: opp.mepfpEngineerCo, name: opp.mepfpEngineerName },
+    ];
+
+    const list = document.createElement("div");
+    list.className = "pdpo-contact-list";
+    rows.forEach((r) => {
+      const item = document.createElement("div");
+      item.className = "pdpo-contact-item";
+      const strong = document.createElement("strong");
+      strong.textContent = r.label + ": ";
+      item.appendChild(strong);
+      const parts = [r.co, r.name, r.phone, r.email].filter(Boolean);
+      item.appendChild(document.createTextNode(parts.length ? parts.join(" — ") : "Not filled in yet"));
+      list.appendChild(item);
+    });
+    wrap.appendChild(list);
+    return wrap;
+  }
+
+  // Scorpio team roles pick from the same office roster (Precon + the project's office) that
+  // Level Assignments uses, with the same quick-add-a-new-person option, so it's one roster
+  // shared everywhere rather than a separate list to maintain.
+  function renderPdPoTeamSection(project) {
+    const wrap = document.createElement("div");
+
+    const title = document.createElement("div");
+    title.className = "nof-section-title";
+    title.textContent = "Scorpio Team";
+    wrap.appendChild(title);
+
+    const data = getPdPoCoordination(project).team;
+    const grid = document.createElement("div");
+    grid.className = "pdpo-team-grid";
+    PDPO_TEAM_ROLES.forEach((role) => {
+      const field = document.createElement("label");
+      field.className = "pdpo-team-field";
+      const labelText = document.createElement("span");
+      labelText.textContent = role.label;
+      field.appendChild(labelText);
+
+      const select = document.createElement("select");
+      populateAssigneeOptions(select, project, "— Unassigned —");
+      select.value = data[role.id] || "";
+      select.addEventListener("change", async () => {
+        if (select.value === LEVEL_ADD_PERSON_VALUE) {
+          const person = await quickAddRosterPerson(project);
+          if (person) data[role.id] = person.name;
+          else { select.value = data[role.id] || ""; return; }
+          renderPdPoBody(project);
+          updatePdPoProgressLabel(project);
+          return;
+        }
+        data[role.id] = select.value;
+        saveState();
+        updatePdPoProgressLabel(project);
+      });
+      field.appendChild(select);
+      grid.appendChild(field);
+    });
+    wrap.appendChild(grid);
+    return wrap;
   }
 
   // ---------- 6S Level Assignments / Bid Packages ----------

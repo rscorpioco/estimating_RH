@@ -18,6 +18,15 @@ const CHECKLIST_PHASES = [
     dueOffsetDays: 4,
     items: [
       {
+        id: "act-pdpo-coordination",
+        group: "0 · Coordination with Internal PO & PD",
+        text: "Gather what PD/PO handed off before starting the estimate",
+        sub: [
+          { text: "Contact info (Client, Architect, Engineer) reads live from the New Opportunity Form's Owner/AEC section — fill that out first if it's showing blank here" },
+          { text: "Scorpio Team (PC/PO/FM/PD) picks from the office roster the same way Level Assignments does, with an option to add someone new" },
+        ],
+      },
+      {
         id: "act-conformed-set",
         group: "1 · New Opportunity Form & Procore Request",
         text: "Upload the conformed set (drawings + specifications + ITB) from the architect",
@@ -624,4 +633,43 @@ const NOF_ALL_FIELDS = [
   ...NOF_GENERAL_ROWS.flatMap((r) => [r.left, r.right].filter(Boolean)),
   ...NOF_OWNER_AEC_ROWS.flatMap((r) => [r.left, r.right].filter(Boolean)),
   NOF_DESCRIPTION_FIELD,
+];
+
+// ---------- PD/PO Coordination ----------
+// What Rachel needs to understand from Project Development/Project Operations before she can
+// start building the estimate — captured once here rather than living in an email or notebook.
+// Contact info and the Scorpio team roles below are deliberately NOT part of this field list:
+// contacts are read live off the New Opportunity Form's Owner/AEC section (so they're never
+// entered twice), and the Scorpio team picks from the same office roster Level Assignments uses.
+const PDPO_FIELDS = [
+  { id: "folderEstablished", label: "Active Project Folder Established?", type: "select", options: NOF_YES_NO, section: "Project Folder" },
+  { id: "contractsInFolder", label: "Are Contracts Saved in the Folder?", type: "select", options: NOF_YES_NO, section: "Project Folder" },
+  { id: "designScheduleInFolder", label: "Design Schedule Saved in the Folder?", type: "select", options: NOF_YES_NO, section: "Project Folder" },
+  { id: "pastEstimatesInFolder", label: "Past Estimates/Cost Models Saved in the Folder?", type: "select", options: NOF_YES_NO, section: "Project Folder" },
+
+  { id: "preconContractType", label: "Preconstruction Services Contract", type: "select", options: ["Added to the Estimate", "Stand-Alone Service Fee"], section: "Fee & Budget" },
+  { id: "establishedFee", label: "Established Fee", type: "text", section: "Fee & Budget" },
+  { id: "budget", label: "Budget", type: "text", section: "Fee & Budget" },
+
+  { id: "lastEstimate", label: "Last Estimate (date or reference)", type: "text", section: "Schedule & Estimate" },
+  { id: "estimateContractStart", label: "Estimate Contract Start", type: "date", section: "Schedule & Estimate" },
+  { id: "constructionStart", label: "Construction Start", type: "date", section: "Schedule & Estimate" },
+  { id: "constructionEnd", label: "Construction End", type: "date", section: "Schedule & Estimate" },
+  { id: "deliverableDates", label: "Deliverable Date(s)", type: "text", section: "Schedule & Estimate" },
+
+  { id: "staffingGcsGrs", label: "Staffing / GCs / GRs", type: "textarea", section: "Staffing" },
+
+  { id: "pastExperience", label: "Past Experience", type: "textarea", section: "Client History" },
+  { id: "recurringClient", label: "Recurring Client?", type: "select", options: NOF_YES_NO, section: "Client History" },
+  { id: "recurringLikes", label: "Likes", type: "textarea", section: "Client History" },
+  { id: "recurringPainPoints", label: "Pain Points", type: "textarea", section: "Client History" },
+  { id: "recurringDesignRepeats", label: "Design Repeats to Carry This Time", type: "textarea", section: "Client History" },
+  { id: "recurringEstimateRepeats", label: "Estimate Repeats to Carry This Time", type: "textarea", section: "Client History" },
+];
+
+const PDPO_TEAM_ROLES = [
+  { id: "pc", label: "PC" },
+  { id: "po", label: "PO — Project Operations" },
+  { id: "fm", label: "FM" },
+  { id: "pd", label: "PD — Project Development" },
 ];
