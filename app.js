@@ -1323,6 +1323,190 @@
     return lines;
   }
 
+  // Blob-URL "<a download>" links are the normal browser download mechanism, but a published
+  // Artifact's viewer sandbox blocks any download the page starts itself — so this tries the
+  // platform's sanctioned `downloads` capability first (declared on this artifact) and only
+  // falls back to the plain anchor-click trick when that's unavailable, e.g. running this same
+  // file outside claude.ai (the standalone repo copy), where the sandbox doesn't apply.
+  async function offerDownload(filename, blob) {
+    if (typeof window !== "undefined" && window.claude && typeof window.claude.use === "function") {
+      try {
+        const downloads = await window.claude.use("downloads");
+        if (downloads) {
+          try {
+            await downloads.save({ filename, data: blob });
+          } catch (err) {
+            if (!err || err.code !== "declined") {
+              await miniAlert("Couldn't save the file: " + (err && err.message ? err.message : err));
+            }
+          }
+          return;
+        }
+      } catch (e) {
+        // downloads capability failed to resolve — fall through to the plain-link path below
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  // Turns a raw stored field value into display text for a PDF export, the same way the old
+  // xlsx exports formatted dates/currency/numbers — shared by every build*Pdf function below.
+  function formatFieldValueForPdf(field, raw) {
+    if (raw === undefined || raw === null || raw === "") return "";
+    if (field.type === "date") {
+      const d = new Date(raw + "T00:00:00");
+      return isNaN(d.getTime()) ? String(raw) : formatDate(d);
+    }
+    if (field.type === "currency") {
+      const n = Number(raw);
+      return Number.isFinite(n) ? "$" + n.toLocaleString() : String(raw);
+    }
+    if (field.type === "number") {
+      const n = Number(raw);
+      return Number.isFinite(n) ? n.toLocaleString() : String(raw);
+    }
+    return String(raw);
+  }
+
+  // Clips text with a trailing "…" once it would no longer fit in maxWidth — used where a value
+  // has to stay on one line (a dense two-column row) rather than wrap.
+  function truncateToWidth(text, font, size, maxWidth) {
+    if (maxWidth <= 0) return "";
+    if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
+    let result = text;
+    while (result.length > 1 && font.widthOfTextAtSize(result + "…", size) > maxWidth) {
+      result = result.slice(0, -1);
+    }
+    return result + "…";
+  }
+
+  // Shared layout helper for the form exports (NOF/Precon/Bond/Builder's Risk/Level) — same
+  // plain pdf-lib approach as the Kickoff Package export's heading/fieldLine/wrappedBlock, with
+  // automatic page-break handling added since these forms run well past one page.
+  function createPdfFormBuilder(doc, font, boldFont) {
+    const { rgb } = PDFLib;
+    const PAGE_W = 612, PAGE_H = 792;
+    const marginX = 50, marginTop = 742, bottomLimit = 50;
+    const contentWidth = PAGE_W - marginX * 2;
+    const ink = rgb(0.12, 0.14, 0.17);
+    const muted = rgb(0.4, 0.44, 0.47);
+    const navy = rgb(0.07, 0.19, 0.31);
+    let page = doc.addPage([PAGE_W, PAGE_H]);
+    let y = marginTop;
+
+    function ensureSpace(needed) {
+      if (y - needed < bottomLimit) {
+        page = doc.addPage([PAGE_W, PAGE_H]);
+        y = marginTop;
+      }
+    }
+
+    function title(text) {
+      ensureSpace(24);
+      page.drawText(text, { x: marginX, y, size: 16, font: boldFont, color: navy });
+      y -= 22;
+    }
+
+    function subtitle(text) {
+      ensureSpace(16);
+      page.drawText(text, { x: marginX, y, size: 10, font, color: muted });
+      y -= 18;
+    }
+
+    function sectionBar(text) {
+      ensureSpace(26);
+      const h = 18;
+      page.drawRectangle({ x: marginX, y: y - h + 5, width: contentWidth, height: h, color: navy });
+      page.drawText(text.toUpperCase(), { x: marginX + 8, y: y - h + 10, size: 9, font: boldFont, color: rgb(1, 1, 1) });
+      y -= h + 10;
+    }
+
+    function fieldLine(label, value, labelWidth) {
+      ensureSpace(15);
+      page.drawText(label, { x: marginX, y, size: 9.5, font: boldFont, color: ink });
+      // A label longer than the requested column width would otherwise run straight into the
+      // value — grow the value's start position to clear it, rather than truncating the label.
+      const measuredLabelW = boldFont.widthOfTextAtSize(label, 9.5);
+      const lw = Math.min(Math.max(labelWidth || 200, measuredLabelW + 10), contentWidth - 60);
+      const valLines = wrapPdfText(value || "—", font, 9.5, contentWidth - lw);
+      page.drawText(valLines[0] || "—", { x: marginX + lw, y, size: 9.5, font, color: ink });
+      y -= 15;
+      for (let i = 1; i < valLines.length; i++) {
+        ensureSpace(13);
+        page.drawText(valLines[i], { x: marginX + lw, y, size: 9.5, font, color: ink });
+        y -= 13;
+      }
+    }
+
+    function twoCol(leftLabel, leftValue, rightLabel, rightValue) {
+      ensureSpace(15);
+      const halfW = contentWidth / 2;
+      const minGap = 8;
+      page.drawText(leftLabel, { x: marginX, y, size: 9, font: boldFont, color: ink });
+      const leftLabelW = boldFont.widthOfTextAtSize(leftLabel, 9);
+      const leftValueX = marginX + Math.min(Math.max(130, leftLabelW + minGap), halfW - 20);
+      const leftAvailWidth = marginX + halfW - leftValueX - 6;
+      page.drawText(truncateToWidth(leftValue || "—", font, 9, leftAvailWidth), { x: leftValueX, y, size: 9, font, color: ink });
+      if (rightLabel) {
+        page.drawText(rightLabel, { x: marginX + halfW, y, size: 9, font: boldFont, color: ink });
+        const rightLabelW = boldFont.widthOfTextAtSize(rightLabel, 9);
+        const rightValueX = marginX + halfW + Math.min(Math.max(130, rightLabelW + minGap), halfW - 20);
+        const rightAvailWidth = marginX + contentWidth - rightValueX;
+        page.drawText(truncateToWidth(rightValue || "—", font, 9, rightAvailWidth), { x: rightValueX, y, size: 9, font, color: ink });
+      }
+      y -= 15;
+    }
+
+    function wrappedBlock(label, value, maxWidth) {
+      ensureSpace(13);
+      if (label) {
+        page.drawText(label, { x: marginX, y, size: 9.5, font: boldFont, color: ink });
+        y -= 13;
+      }
+      const lines = wrapPdfText(value || "—", font, 9.5, maxWidth || contentWidth - 10);
+      lines.forEach((line) => {
+        ensureSpace(13);
+        page.drawText(line, { x: marginX + (label ? 10 : 0), y, size: 9.5, font, color: ink });
+        y -= 13;
+      });
+      y -= 4;
+    }
+
+    function spacer(amount) { y -= (amount || 8); }
+
+    function tableHeaderRow(cells, colXs) {
+      ensureSpace(16);
+      cells.forEach((c, i) => {
+        page.drawText(c, { x: marginX + colXs[i], y, size: 8.5, font: boldFont, color: muted });
+      });
+      y -= 3;
+      page.drawLine({ start: { x: marginX, y }, end: { x: marginX + contentWidth, y }, thickness: 0.75, color: rgb(0.8, 0.82, 0.85) });
+      y -= 12;
+    }
+
+    function tableRow(cells, colXs) {
+      ensureSpace(14);
+      cells.forEach((c, i) => {
+        const colEnd = i + 1 < colXs.length ? colXs[i + 1] : contentWidth;
+        const availWidth = colEnd - colXs[i] - 6;
+        page.drawText(truncateToWidth(String(c || ""), font, 9, availWidth), { x: marginX + colXs[i], y, size: 9, font, color: ink });
+      });
+      y -= 14;
+    }
+
+    return {
+      ensureSpace, title, subtitle, sectionBar, fieldLine, twoCol, wrappedBlock, spacer,
+      tableHeaderRow, tableRow, marginX, contentWidth,
+    };
+  }
+
   async function handleExportKickoff() {
     const project = state.projects.find((p) => p.id === kickoffProjectId);
     if (!project) return;
@@ -1340,14 +1524,7 @@
     try {
       const bytes = await buildKickoffPackagePdf(project);
       const blob = new Blob([bytes], { type: "application/pdf" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${sanitizeFilename(project.name)}_Kickoff_Package.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      await offerDownload(`${sanitizeFilename(project.name)}_Kickoff_Package.pdf`, blob);
     } catch (err) {
       await miniAlert("Couldn't build the package: " + (err && err.message ? err.message : err));
     } finally {
@@ -2009,8 +2186,8 @@
   async function handleExportPrecon() {
     const project = state.projects.find((p) => p.id === preconProjectId);
     if (!project) return;
-    if (typeof ExcelJS === "undefined") {
-      await miniAlert("The Excel export library didn't load (check your internet connection) — your entries are still saved in the app.");
+    if (typeof PDFLib === "undefined") {
+      await miniAlert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
       return;
     }
     const exportBtn = document.getElementById("exportPreconBtn");
@@ -2018,65 +2195,53 @@
     exportBtn.disabled = true;
     exportBtn.textContent = "Exporting…";
     try {
-      const blob = await buildPreconWorkbookBlob(project);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${sanitizeFilename(project.name)}_Precon_Start_Up_Form.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      const blob = await buildPreconPdf(project);
+      await offerDownload(`${sanitizeFilename(project.name)}_Precon_Start_Up_Form.pdf`, blob);
     } finally {
       exportBtn.disabled = false;
       exportBtn.textContent = originalLabel;
     }
   }
 
-  async function buildPreconWorkbookBlob(project) {
+  async function buildPreconPdf(project) {
+    const { PDFDocument, StandardFonts } = PDFLib;
     const data = getPrecon(project);
-    const wb = new ExcelJS.Workbook();
-    wb.creator = "Scorpio Preconstruction — CM Startup Board";
-    wb.created = new Date();
-    const ws = wb.addWorksheet("Precon Form");
-    ws.columns = [{ width: 38 }, { width: 34 }, { width: 16 }];
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const b = createPdfFormBuilder(doc, font, boldFont);
 
-    let row = 1;
-    ws.getCell(`A${row}`).value = "PRECONSTRUCTION FORM";
-    ws.getCell(`A${row}`).font = { bold: true, size: 13 };
-    row += 2;
+    b.title("Precon Start Up Form");
+    b.subtitle(`${project.name} — ${project.location}`);
+    b.spacer(6);
 
-    ws.getCell(`A${row}`).value = "Project Number + Owner + Project Name";
-    ws.getCell(`A${row}`).font = { bold: true };
-    ws.getCell(`B${row}`).value = data.projectIdentifier || "";
-    row++;
+    b.fieldLine("Project Number + Owner + Project Name", data.projectIdentifier, 220);
+    b.spacer(6);
 
-    PRECON_FIELDS.forEach((f) => {
-      ws.getCell(`A${row}`).value = f.label;
-      ws.getCell(`A${row}`).font = { bold: true };
-      ws.getCell(`B${row}`).value = data.fields[f.id] || "";
-      row++;
-    });
-    row++;
+    b.sectionBar("General Information");
+    for (let i = 0; i < PRECON_FIELDS.length; i += 2) {
+      const left = PRECON_FIELDS[i], right = PRECON_FIELDS[i + 1];
+      b.twoCol(
+        left.label, formatFieldValueForPdf(left, data.fields[left.id]),
+        right ? right.label : null, right ? formatFieldValueForPdf(right, data.fields[right.id]) : null
+      );
+    }
+    b.spacer(10);
 
-    ws.getCell(`A${row}`).value = "PC Services Billing Schedule of Values";
-    ws.getCell(`A${row}`).font = { bold: true, size: 11 };
-    row++;
-    ws.getCell(`A${row}`).value = "Milestone";
-    ws.getCell(`B${row}`).value = "Value";
-    ws.getCell(`C${row}`).value = "Date";
-    ["A", "B", "C"].forEach((col) => { ws.getCell(`${col}${row}`).font = { bold: true }; });
-    row++;
+    b.sectionBar("PC Services Billing Schedule of Values");
+    b.tableHeaderRow(["Milestone", "Value", "Date"], [0, 230, 350]);
     PRECON_SOV_MILESTONES.forEach((m) => {
       const r = data.sov[m.id] || {};
-      ws.getCell(`A${row}`).value = m.label;
-      ws.getCell(`B${row}`).value = r.value || "";
-      ws.getCell(`C${row}`).value = r.date || "";
-      row++;
+      b.tableRow([m.label, r.value ? "$" + Number(r.value).toLocaleString() : "—", r.date ? formatDate(new Date(r.date + "T00:00:00")) : "—"], [0, 230, 350]);
     });
+    b.spacer(10);
 
-    const buffer = await wb.xlsx.writeBuffer();
-    return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const manager = PRECON_FINANCE_MANAGERS_BY_OFFICE[project.location] || "your Finance Manager";
+    b.sectionBar("Send To");
+    b.wrappedBlock(null, `Per the workbook's reference table: email this completed form to ${manager} and Jill Altman.`);
+
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: "application/pdf" });
   }
 
   // ---------- Bond Request Form ----------
@@ -2244,8 +2409,8 @@
   async function handleExportBond() {
     const project = state.projects.find((p) => p.id === bondProjectId);
     if (!project) return;
-    if (typeof ExcelJS === "undefined") {
-      await miniAlert("The Excel export library didn't load (check your internet connection) — your entries are still saved in the app.");
+    if (typeof PDFLib === "undefined") {
+      await miniAlert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
       return;
     }
     const exportBtn = document.getElementById("exportBondBtn");
@@ -2253,64 +2418,43 @@
     exportBtn.disabled = true;
     exportBtn.textContent = "Exporting…";
     try {
-      const blob = await buildBondWorkbookBlob(project);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${sanitizeFilename(project.name)}_Bond_Request.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      const blob = await buildBondPdf(project);
+      await offerDownload(`${sanitizeFilename(project.name)}_Bond_Request.pdf`, blob);
     } finally {
       exportBtn.disabled = false;
       exportBtn.textContent = originalLabel;
     }
   }
 
-  async function buildBondWorkbookBlob(project) {
+  async function buildBondPdf(project) {
+    const { PDFDocument, StandardFonts } = PDFLib;
     const data = getBondRequest(project);
-    const wb = new ExcelJS.Workbook();
-    wb.creator = "Scorpio Preconstruction — CM Startup Board";
-    wb.created = new Date();
-    const ws = wb.addWorksheet("Bond Request");
-    ws.columns = [{ width: 38 }, { width: 40 }];
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const b = createPdfFormBuilder(doc, font, boldFont);
 
-    let row = 1;
-    ws.getCell(`A${row}`).value = "REQUEST FOR BOND";
-    ws.getCell(`A${row}`).font = { bold: true, size: 13 };
-    row += 2;
+    b.title("Request for Bond");
+    b.subtitle(`${project.name} — ${project.location}`);
+    b.spacer(6);
 
-    ws.getCell(`A${row}`).value = "Request By (Company Name)";
-    ws.getCell(`A${row}`).font = { bold: true };
-    ws.getCell(`B${row}`).value = BOND_REQUESTOR_NAME;
-    row++;
-    ws.getCell(`A${row}`).value = "Contractor";
-    ws.getCell(`A${row}`).font = { bold: true };
-    ws.getCell(`B${row}`).value = BOND_REQUESTOR_NAME;
-    row++;
-    ws.getCell(`A${row}`).value = "Project Name";
-    ws.getCell(`A${row}`).font = { bold: true };
-    ws.getCell(`B${row}`).value = project.name;
-    row++;
+    b.fieldLine("Request By (Company Name)", BOND_REQUESTOR_NAME, 200);
+    b.fieldLine("Contractor", BOND_REQUESTOR_NAME, 200);
+    b.fieldLine("Project Name", project.name, 200);
+    b.spacer(6);
 
     let lastSection = null;
     BOND_FIELDS.forEach((f) => {
       if (f.section && f.section !== lastSection) {
-        row++;
-        ws.getCell(`A${row}`).value = f.section.toUpperCase();
-        ws.getCell(`A${row}`).font = { bold: true, size: 11 };
-        row++;
+        b.sectionBar(f.section);
         lastSection = f.section;
       }
-      ws.getCell(`A${row}`).value = f.label;
-      ws.getCell(`A${row}`).font = { bold: true };
-      ws.getCell(`B${row}`).value = data[f.id] || "";
-      row++;
+      if (f.type === "textarea") b.wrappedBlock(f.label, formatFieldValueForPdf(f, data[f.id]));
+      else b.fieldLine(f.label, formatFieldValueForPdf(f, data[f.id]), 220);
     });
 
-    const buffer = await wb.xlsx.writeBuffer();
-    return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: "application/pdf" });
   }
 
   // ---------- Builder's Risk Quote Request ----------
@@ -2433,8 +2577,8 @@
   async function handleExportBuildersRisk() {
     const project = state.projects.find((p) => p.id === buildersRiskProjectId);
     if (!project) return;
-    if (typeof ExcelJS === "undefined") {
-      await miniAlert("The Excel export library didn't load (check your internet connection) — your entries are still saved in the app.");
+    if (typeof PDFLib === "undefined") {
+      await miniAlert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
       return;
     }
     const exportBtn = document.getElementById("exportBuildersRiskBtn");
@@ -2442,47 +2586,34 @@
     exportBtn.disabled = true;
     exportBtn.textContent = "Exporting…";
     try {
-      const blob = await buildBuildersRiskWorkbookBlob(project);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${sanitizeFilename(project.name)}_Builders_Risk_Quote_Request.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      const blob = await buildBuildersRiskPdf(project);
+      await offerDownload(`${sanitizeFilename(project.name)}_Builders_Risk_Quote_Request.pdf`, blob);
     } finally {
       exportBtn.disabled = false;
       exportBtn.textContent = originalLabel;
     }
   }
 
-  async function buildBuildersRiskWorkbookBlob(project) {
+  async function buildBuildersRiskPdf(project) {
+    const { PDFDocument, StandardFonts } = PDFLib;
     const data = getBuildersRisk(project);
-    const wb = new ExcelJS.Workbook();
-    wb.creator = "Scorpio Preconstruction — CM Startup Board";
-    wb.created = new Date();
-    const ws = wb.addWorksheet("Builders Risk Quote Request");
-    ws.columns = [{ width: 44 }, { width: 40 }];
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const b = createPdfFormBuilder(doc, font, boldFont);
 
-    let row = 1;
-    ws.getCell(`A${row}`).value = "BUILDERS RISK QUOTE REQUEST — KNOWN FIELDS";
-    ws.getCell(`A${row}`).font = { bold: true, size: 13 };
-    row++;
-    ws.getCell(`A${row}`).value = "The rest of the official HUB International application (materials, coverage " +
-      "elections, deductibles, additional interests) still needs to be filled in by hand.";
-    ws.getCell(`A${row}`).alignment = { wrapText: true };
-    row += 2;
+    b.title("Builder's Risk Quote Request — Known Fields");
+    b.subtitle(`${project.name} — ${project.location}`);
+    b.wrappedBlock(null, "The rest of the official HUB International application (materials, coverage " +
+      "elections, deductibles, additional interests) still needs to be filled in by hand.");
+    b.spacer(6);
 
     BUILDERS_RISK_FIELDS.forEach((f) => {
-      ws.getCell(`A${row}`).value = f.label;
-      ws.getCell(`A${row}`).font = { bold: true };
-      ws.getCell(`B${row}`).value = data[f.id] || "";
-      row++;
+      b.fieldLine(f.label, formatFieldValueForPdf(f, data[f.id]), 240);
     });
 
-    const buffer = await wb.xlsx.writeBuffer();
-    return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: "application/pdf" });
   }
 
   // ---------- 6S Level Assignments / Bid Packages ----------
@@ -2843,8 +2974,8 @@
     const project = state.projects.find((p) => p.id === levelProjectId);
     if (!project) return;
 
-    if (typeof ExcelJS === "undefined") {
-      await miniAlert("The Excel export library didn't load (check your internet connection) — your entries are still saved in the app.");
+    if (typeof PDFLib === "undefined") {
+      await miniAlert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
       return;
     }
 
@@ -2854,99 +2985,44 @@
     exportBtn.textContent = "Exporting…";
 
     try {
-      const blob = await buildLevelAssignmentsWorkbookBlob(project);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${sanitizeFilename(project.name)}_Level_Assignments.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      const blob = await buildLevelAssignmentsPdf(project);
+      await offerDownload(`${sanitizeFilename(project.name)}_Level_Assignments.pdf`, blob);
     } finally {
       exportBtn.disabled = false;
       exportBtn.textContent = originalLabel;
     }
   }
 
-  async function buildLevelAssignmentsWorkbookBlob(project) {
+  async function buildLevelAssignmentsPdf(project) {
+    const { PDFDocument, StandardFonts } = PDFLib;
     const la = getLevelAssignments(project);
-    const DARK = "FF222222";
-    const GREY = "FF9EA1A2";
-    const THIN = { style: "thin", color: { argb: "FFD9D9D9" } };
-    const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const b = createPdfFormBuilder(doc, font, boldFont);
+    const colXs = [0, 55, 210, 330, 415];
 
-    const wb = new ExcelJS.Workbook();
-    wb.creator = "Scorpio Preconstruction — CM Startup Board";
-    wb.created = new Date();
+    b.title("6S Level Assignments & Bid Packages");
+    b.subtitle(`${project.name} — ${project.location}`);
+    b.spacer(6);
 
-    const ws = wb.addWorksheet("Level Assignments", { views: [{ showGridLines: false }] });
-    ws.columns = [
-      { width: 2 }, { width: 12 }, { width: 30 }, { width: 22 },
-      { width: 18 }, { width: 20 }, { width: 22 }, { width: 2 },
-    ];
-
-    ws.mergeCells("B1:G1");
-    ws.getCell("B1").value = `${project.name} — 6S Level Assignments & Bid Packages`;
-    ws.getCell("B1").font = { bold: true, size: 13, color: { argb: "FFFFFFFF" } };
-    ws.getCell("B1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK } };
-    ws.getCell("B1").alignment = { vertical: "middle", indent: 1 };
-    ws.getRow(1).height = 22;
-
-    let row = 3;
     LEVELING_TRADE_GROUPS.forEach((group) => {
-      ws.mergeCells(`B${row}:C${row}`);
-      const groupCell = ws.getCell(`B${row}`);
-      groupCell.value = group.name;
-      groupCell.font = { bold: true, size: 10.5, color: { argb: "FFFFFFFF" } };
-      groupCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK } };
-      groupCell.alignment = { vertical: "middle", indent: 1 };
-      ws.getCell(`D${row}`).value = "Captain";
-      ws.getCell(`D${row}`).font = { bold: true, size: 9.5, color: { argb: "FF1A2230" } };
-      ws.mergeCells(`E${row}:G${row}`);
-      ws.getCell(`E${row}`).value = la.captains[group.name] || "";
-      ws.getCell(`E${row}`).font = { size: 10 };
-      row++;
-
-      const headers = ["BP#", "Trade", "Leveler", "Confirmed Bidders", "Trusted Subs Confirmed"];
-      headers.forEach((h, i) => {
-        const cell = ws.getCell(row, 2 + i);
-        cell.value = h;
-        cell.font = { bold: true, size: 9, color: { argb: "FF1A2230" } };
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GREY } };
-        cell.border = BORDER;
-      });
-      row++;
-
+      b.sectionBar(`${group.name}   ·   Captain: ${la.captains[group.name] || "—"}`);
+      b.tableHeaderRow(["BP#", "Trade", "Leveler", "Confirmed Bidders", "Trusted Subs"], colXs);
       getGroupTrades(project, group).forEach((t) => {
         const r = la.trades[t.bp] || {};
-        const values = [t.bp, t.trade, r.leveler || "", r.confirmedBidders ?? "", r.trustedSubs ?? ""];
-        values.forEach((v, i) => {
-          const cell = ws.getCell(row, 2 + i);
-          cell.value = v;
-          cell.font = { size: 10 };
-          cell.border = BORDER;
-        });
-        row++;
+        b.tableRow([t.bp, t.trade, r.leveler || "—", r.confirmedBidders ?? "—", r.trustedSubs ?? "—"], colXs);
       });
-      row++;
+      b.spacer(8);
     });
 
-    row++;
-    ws.getCell(`B${row}`).value = "Project 6S Team";
-    ws.getCell(`B${row}`).font = { bold: true, size: 11 };
-    row++;
+    b.sectionBar("Project 6S Team");
     getLevelTeam(project).forEach((person) => {
-      ws.getCell(`B${row}`).value = person.name;
-      ws.getCell(`B${row}`).font = { bold: true, size: 10 };
-      ws.mergeCells(`C${row}:G${row}`);
-      ws.getCell(`C${row}`).value = person.roles.join(", ");
-      ws.getCell(`C${row}`).font = { size: 9.5 };
-      row++;
+      b.fieldLine(person.name, person.roles.join(", "), 150);
     });
 
-    const buffer = await wb.xlsx.writeBuffer();
-    return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: "application/pdf" });
   }
 
   // ---------- New Opportunity Form ----------
@@ -3791,8 +3867,8 @@
     const project = state.projects.find((p) => p.id === opportunityProjectId);
     if (!project) return;
 
-    if (typeof ExcelJS === "undefined") {
-      await miniAlert("The Excel export library didn't load (check your internet connection) — your entries are still saved in the app.");
+    if (typeof PDFLib === "undefined") {
+      await miniAlert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
       return;
     }
 
@@ -3802,15 +3878,8 @@
     exportBtn.textContent = "Exporting…";
 
     try {
-      const blob = await buildOpportunityWorkbookBlob(project);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${sanitizeFilename(project.name)}_New_Opportunity_Form.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      const blob = await buildOpportunityPdf(project);
+      await offerDownload(`${sanitizeFilename(project.name)}_New_Opportunity_Form.pdf`, blob);
     } finally {
       exportBtn.disabled = false;
       exportBtn.textContent = originalLabel;
@@ -3821,112 +3890,47 @@
     return (name || "Project").replace(/[\\/:*?"<>|]+/g, "").trim().replace(/\s+/g, "_");
   }
 
-  async function buildOpportunityWorkbookBlob(project) {
+  async function buildOpportunityPdf(project) {
+    const { PDFDocument, StandardFonts } = PDFLib;
     const data = project.opportunity || {};
-    const DARK = "FF222222";
-    const GREY = "FF9EA1A2";
-    const THIN = { style: "thin", color: { argb: "FFD9D9D9" } };
-    const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const b = createPdfFormBuilder(doc, font, boldFont);
 
-    const wb = new ExcelJS.Workbook();
-    wb.creator = "Scorpio Preconstruction — CM Startup Board";
-    wb.created = new Date();
+    b.title("New Opportunity Form");
+    b.subtitle(`${project.name} — ${project.location}   ·   Exported ${formatDate(new Date())}`);
+    b.spacer(6);
 
-    const ws = wb.addWorksheet("New Opportunity Form", { views: [{ showGridLines: false }] });
-    ws.columns = [
-      { width: 2 }, { width: 32 }, { width: 24 }, { width: 2 },
-      { width: 28 }, { width: 24 }, { width: 2 }, { width: 2 },
-      { width: 22 }, { width: 4 }, { width: 4 }, { width: 20 },
-    ];
-
-    function sectionHeader(range, text) {
-      ws.mergeCells(range);
-      const cell = ws.getCell(range.split(":")[0]);
-      cell.value = text;
-      cell.font = { bold: true, size: 11, color: { argb: "FFFFFFFF" } };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK } };
-      cell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
-      ws.getRow(Number(range.match(/\d+/)[0])).height = 20;
-    }
-
-    function labelCell(coord, text) {
-      const cell = ws.getCell(coord);
-      cell.value = text;
-      cell.font = { bold: true, size: 9.5, color: { argb: "FF1A2230" } };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GREY } };
-      cell.alignment = { vertical: "middle", wrapText: true, indent: 1 };
-      cell.border = BORDER;
-    }
-
-    function valueCell(coord, field) {
-      const cell = ws.getCell(coord);
-      const raw = data[field.id];
-      cell.font = { size: 10 };
-      cell.alignment = { vertical: "middle", indent: 1 };
-      cell.border = BORDER;
-      if (raw === undefined || raw === null || raw === "") {
-        cell.value = null;
-        return;
-      }
-      if (field.type === "date") {
-        cell.value = new Date(raw + "T00:00:00");
-        cell.numFmt = "mm/dd/yyyy";
-      } else if (field.type === "currency") {
-        const n = Number(raw);
-        cell.value = Number.isFinite(n) ? n : raw;
-        cell.numFmt = '"$"#,##0';
-      } else if (field.type === "number") {
-        const n = Number(raw);
-        cell.value = Number.isFinite(n) ? n : raw;
-        cell.numFmt = "#,##0";
-      } else {
-        cell.value = raw;
-      }
-    }
-
-    ws.mergeCells("B1:F1");
-    ws.getCell("B1").value = "New Opportunity Form";
-    ws.getCell("B1").font = { bold: true, size: 14, color: { argb: "FFFFFFFF" } };
-    ws.getCell("B1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK } };
-    ws.getCell("B1").alignment = { vertical: "middle", indent: 1 };
-    ws.mergeCells("I1:L1");
-    ws.getCell("I1").value = "Exported from the CM Startup Board — " + formatDate(new Date());
-    ws.getCell("I1").font = { italic: true, size: 9, color: { argb: "FF667085" } };
-    ws.getRow(1).height = 22;
-
-    sectionHeader("B3:F3", "General Information");
+    b.sectionBar("General Information");
     NOF_GENERAL_ROWS.forEach((row) => {
-      if (row.left) { labelCell(row.left.labelCell, row.left.label); valueCell(row.left.valueCell, row.left); }
-      if (row.right) { labelCell(row.right.labelCell, row.right.label); valueCell(row.right.valueCell, row.right); }
+      b.twoCol(
+        row.left ? row.left.label : "", row.left ? formatFieldValueForPdf(row.left, data[row.left.id]) : null,
+        row.right ? row.right.label : null, row.right ? formatFieldValueForPdf(row.right, data[row.right.id]) : null
+      );
     });
+    b.spacer(8);
 
-    sectionHeader("B14:C14", "Owner Information");
-    sectionHeader("E14:F14", "AEC Information");
+    b.sectionBar("Owner Information  /  AEC Team");
     NOF_OWNER_AEC_ROWS.forEach((row) => {
-      if (row.left) { labelCell(row.left.labelCell, row.left.label); valueCell(row.left.valueCell, row.left); }
-      if (row.right) { labelCell(row.right.labelCell, row.right.label); valueCell(row.right.valueCell, row.right); }
+      b.twoCol(
+        row.left ? row.left.label : "", row.left ? formatFieldValueForPdf(row.left, data[row.left.id]) : null,
+        row.right ? row.right.label : null, row.right ? formatFieldValueForPdf(row.right, data[row.right.id]) : null
+      );
+    });
+    b.spacer(8);
+
+    b.sectionBar("Opportunity Description & Notes");
+    b.wrappedBlock(null, data.description || "—");
+    b.spacer(8);
+
+    b.sectionBar("Finance Team Contacts");
+    NOF_FINANCE_CONTACTS.forEach((c) => {
+      b.fieldLine(c.region, c.name, 200);
     });
 
-    sectionHeader("B29:F29", "Opportunity Description & Notes");
-    ws.mergeCells("B30:F33");
-    const descCell = ws.getCell("B30");
-    descCell.value = data.description || "";
-    descCell.font = { size: 10 };
-    descCell.alignment = { vertical: "top", horizontal: "left", wrapText: true, indent: 1 };
-    descCell.border = BORDER;
-
-    ws.getCell("I10").value = "Finance Team Contacts";
-    ws.getCell("I10").font = { bold: true, size: 10 };
-    NOF_FINANCE_CONTACTS.forEach((c, i) => {
-      const r = 11 + i;
-      ws.getCell(`I${r}`).value = c.region;
-      ws.getCell(`I${r}`).font = { size: 9.5 };
-      ws.getCell(`L${r}`).value = c.name;
-      ws.getCell(`L${r}`).font = { size: 9.5 };
-    });
-
-    const buffer = await wb.xlsx.writeBuffer();
-    return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: "application/pdf" });
   }
 
   function renderSubList(subItems) {
