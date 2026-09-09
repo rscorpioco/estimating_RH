@@ -1706,9 +1706,12 @@
     return wrap;
   }
 
-  // Client/Architect/Engineer contact info is read straight off the New Opportunity Form's
-  // Owner/AEC section rather than re-entered here — one source of truth, and it stays current
-  // as the NOF gets filled in or corrected.
+  // Architect/Engineer contact info is read straight off the New Opportunity Form's Owner/AEC
+  // section (itself pulled from the Drawings/Specifications) rather than re-entered here — one
+  // source of truth. Client is different: a drawing's "OWNER" callouts are almost never the
+  // actual client party (they're a furnish/install responsibility marker), so Client is read
+  // from the signed Contract specifically (runContractClientExtraction) once one's uploaded,
+  // falling back to the Drawings/Specifications' Owner name before that.
   function renderPdPoContactInfoSection(project) {
     const wrap = document.createElement("div");
 
@@ -1717,14 +1720,23 @@
     title.textContent = "Important Contact Information";
     wrap.appendChild(title);
 
+    const opp = project.opportunity || {};
+    const contractClient = project.contractClient || null;
+
     const note = document.createElement("p");
     note.className = "pdpo-linked-note";
-    note.textContent = "Pulled live from the New Opportunity Form's Owner/AEC section — fill that out to populate this.";
+    note.textContent = "Architect/Engineer info is pulled from the Drawings/Specifications (via the New Opportunity Form's Owner/AEC section). " +
+      (contractClient
+        ? "Client info is pulled from the signed Contract."
+        : "Client info is pulled from the signed Contract once one's uploaded — until then it falls back to the Owner name found in the Drawings/Specifications.");
     wrap.appendChild(note);
 
-    const opp = project.opportunity || {};
+    const clientCo = (contractClient && contractClient.ownerCompany) || opp.ownerCompany;
+    const clientName = (contractClient && contractClient.ownerContactName) || opp.ownerContactName;
+    const clientPhone = (contractClient && contractClient.ownerPhone) || opp.ownerPhone;
+    const clientEmail = (contractClient && contractClient.ownerEmail) || opp.ownerEmail;
     const rows = [
-      { label: "Client", co: opp.ownerCompany, name: opp.ownerContactName, phone: opp.ownerPhone, email: opp.ownerEmail },
+      { label: "Client", co: clientCo, name: clientName, phone: clientPhone, email: clientEmail },
       { label: "Architect", co: opp.architectCo, name: opp.architectContactName, phone: opp.architectPhone, email: opp.architectEmail },
       { label: "Civil Engineer", co: opp.civilEngineerCo, name: opp.civilEngineerName },
       { label: "Structural Engineer", co: opp.structuralEngineerCo, name: opp.structuralEngineerName },
@@ -3060,7 +3072,7 @@
 
   function assignAecBlockToFields(found, fields, blockLines) {
     if (!blockLines.length) return;
-    if (fields[0] && !found[fields[0]]) found[fields[0]] = blockLines[0];
+    if (fields[0] && !found[fields[0]] && isPlausibleCompanyName(blockLines[0])) found[fields[0]] = blockLines[0];
     if (fields.length < 2) return; // company-only discipline (no address/phone fields on the form)
     const [, addressField, cszField, phoneField, emailField] = fields;
     const cszIdx = blockLines.findIndex((l) => CITY_STATE_ZIP_RE.test(l));
@@ -3111,6 +3123,7 @@
         if (!/\d/.test(addressLine)) continue;
         if (skipHeadings.has(companyLine.toUpperCase()) || NOF_AEC_ALL_HEADER_LABELS.has(companyLine.toUpperCase())) continue;
         if (claimedCompanies.has(companyLine)) continue;
+        if (!isPlausibleCompanyName(companyLine)) continue;
         found.ownerCompany = companyLine;
         found.ownerAddress = addressLine;
         found.ownerCityStateZip = cityLine;
@@ -3156,6 +3169,28 @@
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
+  // A "Label: Value" or title-block scan can just as easily latch onto a stray note ("NO",
+  // "SEE PLANS") or a whole sentence ("ENGINEER BEFORE PROCEEDING WITH...") as it can a real
+  // company name — this is the one sanity check standing between that and a garbage match
+  // landing in a form field. Not foolproof, just cheap insurance against the obvious cases.
+  const COMPANY_FIELD_IDS = new Set([
+    "ownerCompany", "architectCo", "civilEngineerCo", "structuralEngineerCo",
+    "mepfpEngineerCo", "landscapeArchitectCo", "interiorDesignerCo",
+  ]);
+  const IMPLAUSIBLE_COMPANY_VALUES = new Set([
+    "NO", "YES", "N/A", "NA", "TBD", "NONE", "UNKNOWN", "NIC", "N I C",
+    "OWNER", "CLIENT", "ARCHITECT", "ENGINEER", "SEE PLANS", "PER PLANS", "SEE SPECS", "PER SPECS", "TYP", "TYPICAL",
+  ]);
+  function isPlausibleCompanyName(value) {
+    if (!value) return false;
+    const trimmed = value.trim();
+    if (trimmed.length < 3 || trimmed.length > 60) return false;
+    const cleaned = trimmed.replace(/[.,;:]+$/, "").toUpperCase();
+    if (IMPLAUSIBLE_COMPANY_VALUES.has(cleaned)) return false;
+    if (trimmed.split(/\s+/).length > 8) return false;
+    return true;
+  }
+
   function extractNofFieldsFromText(text, pages) {
     const lines = text.split("\n");
     const found = {};
@@ -3171,6 +3206,7 @@
           let value = raw;
           if (rule.type === "date") value = parseFuzzyDate(value);
           else if (rule.type === "currency" || rule.type === "number") value = parseCurrencyAmount(value);
+          else if (COMPANY_FIELD_IDS.has(rule.fieldId) && !isPlausibleCompanyName(value)) value = null;
           if (value) { found[rule.fieldId] = value; break; }
         }
       }
@@ -3276,6 +3312,22 @@
     saveState();
   }
 
+  // The Contract is the one document that can actually name the real Client party (drawings and
+  // specs almost never do — "OWNER" callouts on a sheet are about who furnishes/installs an
+  // item, not who the client is), so Client info is read from here specifically rather than
+  // folded into the Drawings/Specifications-derived Owner/AEC data in project.opportunity.
+  async function runContractClientExtraction(project) {
+    const contractDoc = getProjectDocument(project, "contract");
+    if (!contractDoc) return;
+    const extracted = await extractPdfText(contractDoc.pdfDoc);
+    const matches = extractNofFieldsFromText(extracted.text, extracted.pages);
+    const client = {};
+    ["ownerCompany", "ownerContactName", "ownerAddress", "ownerCityStateZip", "ownerPhone", "ownerEmail"].forEach((f) => {
+      if (matches[f]) client[f] = matches[f];
+    });
+    if (Object.keys(client).length) project.contractClient = client;
+  }
+
   async function processDocumentSlotUpload(project, slotId, fileList) {
     const pdfjsLib = await waitForPdfJs();
     if (!pdfjsLib) throw new Error("The PDF-reading library didn't load — check your internet connection");
@@ -3295,6 +3347,7 @@
       // project back to the New Opportunity Form path.
       project.contractUploaded = true;
       project.contractFileName = sourceNames.length > 1 ? sourceNames.join(" + ") : sourceNames[0];
+      await runContractClientExtraction(project);
       saveState();
     } else {
       await runDocumentExtraction(project);
