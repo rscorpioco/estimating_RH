@@ -18,6 +18,7 @@
   const fieldTeamLead = document.getElementById("fieldTeamLead");
   const fieldActivateDate = document.getElementById("fieldActivateDate");
   const fieldBidDueDate = document.getElementById("fieldBidDueDate");
+  const fieldClientDueDate = document.getElementById("fieldClientDueDate");
 
   const scheduleDialog = document.getElementById("scheduleDialog");
   const scheduleProjectName = document.getElementById("scheduleProjectName");
@@ -399,6 +400,7 @@
     fieldTeamLead.value = project.teamLead || "";
     fieldActivateDate.value = project.activateDate;
     fieldBidDueDate.value = project.bidDueDate || "";
+    fieldClientDueDate.value = project.clientDueDate || "";
     dialog.showModal();
   }
 
@@ -413,6 +415,7 @@
       project.teamLead = fieldTeamLead.value.trim();
       project.activateDate = fieldActivateDate.value;
       project.bidDueDate = fieldBidDueDate.value || "";
+      project.clientDueDate = fieldClientDueDate.value || "";
     } else {
       const project = {
         id: "proj_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
@@ -422,6 +425,7 @@
         teamLead: fieldTeamLead.value.trim(),
         activateDate: fieldActivateDate.value,
         bidDueDate: fieldBidDueDate.value || "",
+        clientDueDate: fieldClientDueDate.value || "",
         checked: {},
         opportunity: {},
         createdAt: new Date().toISOString(),
@@ -465,6 +469,7 @@
     if (item.condition === "HardBid") return project.deliveryMethod === "Hard Bid";
     if (item.condition === "HasContract") return !!project.contractUploaded;
     if (item.condition === "NoContract") return !project.contractUploaded;
+    if (item.condition === "HasDrawings") return !!getProjectDocument(project, "drawings");
     return true;
   }
 
@@ -820,13 +825,35 @@
 
   // ---------- Meeting & Task Schedule ----------
 
+  // Each rule's `anchor` names which project date it's computed from; `null`/undefined means
+  // there's no formula (e.g. a site visit date that depends on the ITB, not a fixed offset) —
+  // those rows just carry a reminder instead of a computed date.
+  function getScheduleAnchorDate(project, anchor) {
+    if (anchor === "activate") return project.activateDate;
+    if (anchor === "bidDue") return project.bidDueDate;
+    if (anchor === "clientDue") return project.clientDueDate;
+    if (anchor === "levelApproved") return (project.levelAssignments && project.levelAssignments.approvedDate) || "";
+    return "";
+  }
+
+  function scheduleAnchorMissingLabel(rule) {
+    if (rule.anchor === "bidDue") return "— set a Bid Due Date to compute";
+    if (rule.anchor === "clientDue") return "— set a Client Deliverable Due Date to compute";
+    if (rule.anchor === "levelApproved") return "— set the Level Assignments Approved Date to compute (in 6S Level Assignments)";
+    if (rule.anchor === "activate") return "— missing Activate Date";
+    // No anchor at all — either it's a send-anytime action with no fixed date (email-only rules)
+    // or it depends on something the app can't compute (e.g. a site visit date from the ITB).
+    if ((rule.actions || ["calendar"]).includes("calendar")) return "— check the ITB, add manually";
+    return "— send anytime";
+  }
+
   function computeSchedule(project) {
     return SCHEDULE_RULES.filter((rule) => itemApplies(rule, project)).map((rule) => {
-      const anchorDate = rule.anchor === "activate" ? project.activateDate : project.bidDueDate;
+      const anchorDate = getScheduleAnchorDate(project, rule.anchor);
       if (!anchorDate) {
-        return { rule, date: null, dateLabel: "— set a Bid Due Date to compute" };
+        return { rule, date: null, dateLabel: scheduleAnchorMissingLabel(rule) };
       }
-      const date = addDays(anchorDate, rule.offsetDays);
+      const date = addDays(anchorDate, rule.offsetDays || 0);
       const timeLabel = rule.time
         ? new Date("2000-01-01T" + rule.time).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
         : rule.allDay
@@ -874,6 +901,22 @@
     return "https://outlook.office.com/calendar/0/deeplink/compose?" + params.toString();
   }
 
+  // Same idea as buildOutlookDeepLink but for a plain email (Outlook Web "compose mail") —
+  // used for the send-this-form actions (New Opportunity Form, Precon, Bond, Builder's Risk,
+  // 6S Leveling) instead of a calendar invite. Nothing can attach the exported file for the
+  // user (a static page can't reach into Outlook's compose window that way), so attachHint just
+  // reminds them to grab it from the relevant form's Export button first.
+  function buildOutlookMailDeepLink(rule, label, project) {
+    const bodyParts = [rule.emailBody || rule.note || ""];
+    if (rule.attachHint) bodyParts.push(rule.attachHint);
+    const params = new URLSearchParams({
+      subject: `${rule.emailSubject || label} — ${project.name}`,
+      body: bodyParts.filter(Boolean).join("\n\n"),
+    });
+    if (rule.to && rule.to.length) params.set("to", rule.to.join(";"));
+    return "https://outlook.office.com/mail/deeplink/compose?" + params.toString();
+  }
+
   function renderScheduleAffordance(project) {
     const wrap = document.createElement("div");
     wrap.className = "phase-schedule-bar";
@@ -919,17 +962,32 @@
         <td class="mono-cell">${escapeHtml(timeLabel || "—")}</td>
         <td>${typeChip}</td>
         <td class="note-cell">${escapeHtml(rule.note || "")}</td>
-        <td></td>
+        <td class="schedule-actions-cell"></td>
       `;
-      const link = buildOutlookDeepLink(rule, date, label);
-      if (link) {
+      const actionsCell = tr.lastElementChild;
+      const actions = rule.actions || ["calendar"];
+
+      if (actions.includes("calendar")) {
+        const link = buildOutlookDeepLink(rule, date, label);
+        if (link) {
+          const a = document.createElement("a");
+          a.href = link;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.className = "btn btn-sm outlook-add-btn";
+          a.textContent = "+ Outlook";
+          actionsCell.appendChild(a);
+        }
+      }
+      if (actions.includes("email")) {
+        const mailLink = buildOutlookMailDeepLink(rule, label, project);
         const a = document.createElement("a");
-        a.href = link;
+        a.href = mailLink;
         a.target = "_blank";
         a.rel = "noopener noreferrer";
         a.className = "btn btn-sm outlook-add-btn";
-        a.textContent = "+ Outlook";
-        tr.lastElementChild.appendChild(a);
+        a.textContent = "Email";
+        actionsCell.appendChild(a);
       }
       tbody.appendChild(tr);
     });
@@ -939,7 +997,7 @@
 
     const note = document.createElement("p");
     note.className = "schedule-note";
-    note.textContent = "\"+ Outlook\" opens a prefilled event in Outlook Web on this date/time — review it and click Send/Save there; nothing goes out until you do. Attendees are only filled in where an email is already known (e.g. Aaron Rogers) — add the rest yourself.";
+    note.textContent = "\"+ Outlook\" opens a prefilled calendar event and \"Email\" opens a prefilled message, both in Outlook Web — review either and click Send/Save there; nothing goes out until you do. Attendees are only filled in where an email is already known (e.g. Aaron Rogers) — add the rest yourself. Email actions that reference an attachment (a form or the 6S Leveling export) don't attach anything automatically — export the file first and attach it in Outlook before sending.";
     scheduleBody.appendChild(note);
 
     scheduleDialog.showModal();
@@ -2555,6 +2613,24 @@
   function renderLevelTeamSummary(project) {
     const wrap = document.createElement("div");
     wrap.className = "level-team-summary";
+
+    const la = getLevelAssignments(project);
+    const approvedRow = document.createElement("label");
+    approvedRow.className = "level-approved-row";
+    approvedRow.appendChild(document.createTextNode("Level Assignments Approved Date "));
+    const approvedHint = document.createElement("span");
+    approvedHint.className = "hint";
+    approvedHint.textContent = "(optional — set this once assignments are locked in; it drives the Complete Kick Off Mtg date in the Meeting & Task Schedule)";
+    approvedRow.appendChild(approvedHint);
+    const approvedInput = document.createElement("input");
+    approvedInput.type = "date";
+    approvedInput.value = la.approvedDate || "";
+    approvedInput.addEventListener("change", () => {
+      la.approvedDate = approvedInput.value || "";
+      saveState();
+    });
+    approvedRow.appendChild(approvedInput);
+    wrap.appendChild(approvedRow);
 
     const heading = document.createElement("h4");
     heading.textContent = "Project 6S Team (auto-built from assignments below)";

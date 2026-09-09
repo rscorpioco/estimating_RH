@@ -772,7 +772,7 @@ dialog.schedule-dialog[open] {
 }
 
 dialog.schedule-dialog {
-  width: 820px;
+  width: 980px;
   max-width: 94vw;
   max-height: 88vh;
   flex-direction: column;
@@ -783,7 +783,17 @@ dialog.schedule-dialog {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+  table-layout: fixed;
 }
+
+.schedule-table th:nth-child(1), .schedule-table td:nth-child(1) { width: 24%; }
+.schedule-table th:nth-child(2), .schedule-table td:nth-child(2) { width: 12%; }
+.schedule-table th:nth-child(3), .schedule-table td:nth-child(3) { width: 8%; }
+.schedule-table th:nth-child(4), .schedule-table td:nth-child(4) { width: 10%; }
+.schedule-table th:nth-child(5), .schedule-table td:nth-child(5) { width: 28%; }
+.schedule-table th:nth-child(6), .schedule-table td:nth-child(6) { width: 18%; }
+.schedule-table td { word-wrap: break-word; overflow-wrap: break-word; }
+.schedule-table .mono-cell { white-space: normal; }
 
 .schedule-table th {
   text-align: left;
@@ -826,6 +836,13 @@ dialog.schedule-dialog {
   font-size: 12px;
   color: var(--text-muted);
   margin: 14px 2px 4px;
+}
+
+.schedule-actions-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .outlook-add-btn {
@@ -956,6 +973,19 @@ dialog.level-dialog {
 
 .level-team-summary li strong { color: var(--navy); }
 .level-team-empty { color: var(--text-muted); font-size: 12px; }
+
+.level-approved-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+.level-approved-row .hint { font-weight: 400; }
+.level-approved-row input[type="date"] { margin-left: auto; }
 
 /* PD/PO Coordination */
 
