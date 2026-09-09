@@ -143,6 +143,10 @@
     { id: "contract", label: "Contract" },
   ];
   const projectDocuments = new Map();
+  // Drawings and/or Specifications changing re-runs extraction across whichever of the two are
+  // currently attached, combined — a company/address block or a "Label: Value" line can live in
+  // either one, so both get scanned together rather than treated as separate documents.
+  const documentExtractionResults = new Map();
   let nofDocViewerState = { projectId: null, slotId: null, pageIndex: 0 };
 
   function documentKey(projectId, slotId) {
@@ -365,6 +369,7 @@
       console.warn("Failed to load saved state", e);
     }
     if (!loaded) loaded = { projects: [], activeProjectId: null, expandedPhases: {} };
+    if (!loaded.expandedPhases) loaded.expandedPhases = {};
     // Seed the editable team roster on first run, and for anyone loading state saved before
     // this feature existed — a deep copy so edits never mutate the seed constant itself.
     if (!loaded.teamRoster) loaded.teamRoster = JSON.parse(JSON.stringify(TEAM_ROSTER_SEED));
@@ -3211,7 +3216,6 @@
   // Drawings and/or Specifications changing re-runs extraction across whichever of the two are
   // currently attached, combined — a company/address block or a "Label: Value" line can live in
   // either one, so both get scanned together rather than treated as separate documents.
-  const documentExtractionResults = new Map();
 
   async function runDocumentExtraction(project) {
     const drawingsDoc = getProjectDocument(project, "drawings");
