@@ -549,10 +549,60 @@
       <div class="overall-progress-bar"><div class="overall-progress-fill" style="width:${overall.pct}%"></div></div>
     `;
     projectDetailEl.appendChild(overallEl);
+    projectDetailEl.appendChild(renderFormsSummary(project));
 
     CHECKLIST_PHASES.forEach((phase) => {
       projectDetailEl.appendChild(renderPhase(project, phase));
     });
+  }
+
+  // A one-glance view of every fill-out form on the project, regardless of which phase/day-group
+  // it lives in — per Rachel's ask, so a form doesn't get lost in a long checklist and she can
+  // jump straight to whichever one needs attention instead of hunting through phases for it.
+  function renderFormsSummary(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "forms-summary";
+
+    const title = document.createElement("div");
+    title.className = "forms-summary-title";
+    title.textContent = "Forms";
+    wrap.appendChild(title);
+
+    const list = document.createElement("div");
+    list.className = "forms-summary-list";
+
+    const pdpo = countPdPoFieldsFilled(project);
+    const nof = countOpportunityFieldsFilled(project);
+    const level = countLevelCoverage(project);
+    const kickoff = countKickoffProgress(project);
+    const levelOrBid = project.deliveryMethod === "Hard Bid" ? "Bid Day" : "Level Day";
+
+    const entries = [
+      { label: "PD/PO Coordination", filled: pdpo.fieldsFilled, total: pdpo.fieldsTotal, onOpen: () => openPdPoDialog(project) },
+      { label: "New Opportunity Form", filled: nof.filled, total: nof.total, onOpen: () => openOpportunityDialog(project) },
+      { label: `Kickoff / ${levelOrBid} Package`, filled: kickoff.fieldsFilled, total: kickoff.fieldsTotal, onOpen: () => openKickoffDialog(project) },
+      { label: "6S Level Assignments & Bid Packages", filled: level.assignedTrades, total: level.totalTrades, onOpen: () => openLevelDialog(project) },
+    ];
+
+    entries.forEach((entry) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "forms-summary-item";
+      const started = entry.filled > 0;
+      const complete = entry.total > 0 && entry.filled >= entry.total;
+      item.classList.toggle("complete", complete);
+      item.classList.toggle("started", started && !complete);
+      item.classList.toggle("not-started", !started);
+      item.innerHTML = `
+        <span class="forms-summary-item-label">${escapeHtml(entry.label)}</span>
+        <span class="forms-summary-item-progress">${entry.filled}/${entry.total}</span>
+      `;
+      item.addEventListener("click", entry.onOpen);
+      list.appendChild(item);
+    });
+
+    wrap.appendChild(list);
+    return wrap;
   }
 
   function renderPhase(project, phase) {

@@ -42,6 +42,12 @@ const CHECKLIST_PHASES = [
       },
 
       {
+        id: "act-kickoff",
+        group: "1b · Kickoff / Bid Day Package (Day 3)",
+        text: "Coordinate the Kick Off Meeting — invite the 6S team and Project team (Day 3)",
+      },
+
+      {
         id: "act-bluebeam",
         group: "2 · High-Level Analysis (While Waiting on ATF)",
         text: "Create documentation efficiencies through Bluebeam — bookmarks, page labels, etc. (required for Destini to read the construction plans)",
@@ -153,11 +159,6 @@ const CHECKLIST_PHASES = [
         id: "act-levelbidday",
         group: "4 · Coordinate the Non-Precon Team",
         text: "Coordinate Level/Bid Day plus lunch — email ATF and Lead (Day 21)",
-      },
-      {
-        id: "act-kickoff",
-        group: "4 · Coordinate the Non-Precon Team",
-        text: "Coordinate the Kick Off Meeting — invite the 6S team and Project team (Day 3)",
       },
 
       {

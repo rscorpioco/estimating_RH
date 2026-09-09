@@ -219,6 +219,73 @@ body {
   background: linear-gradient(90deg, var(--navy-light), var(--accent));
 }
 
+.forms-summary {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px 16px;
+  margin-bottom: 22px;
+}
+
+.forms-summary-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.forms-summary-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+
+.forms-summary-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 12.5px;
+  font-family: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.forms-summary-item:hover {
+  border-color: var(--navy-light);
+}
+
+.forms-summary-item-label {
+  font-weight: 600;
+}
+
+.forms-summary-item-progress {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: #eef1f5;
+  color: var(--text-muted);
+}
+
+.forms-summary-item.started .forms-summary-item-progress {
+  background: #faedd6;
+  color: var(--amber);
+}
+
+.forms-summary-item.complete .forms-summary-item-progress {
+  background: #e3f2e8;
+  color: var(--green);
+}
+
 .phase {
   background: var(--card-bg);
   border: 1px solid var(--border);
