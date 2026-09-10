@@ -1156,3 +1156,112 @@ const BUILDERS_RISK_FIELDS = [
   { id: "addlInterest2Type", label: "Additional Interest #2 Type", type: "select", options: ["Mortgagee", "Loss Payee", "Add'l Insured – Builder", "Add'l Insured – Other", "Premium Finance Co."], section: "Additional Interest" },
   { id: "addlInterest2Address", label: "Additional Interest #2 Mailing Address", type: "text", section: "Additional Interest" },
 ];
+
+// ---------- Builder's Risk — exact HUB template fill mapping ----------
+// Every position below was confirmed by actually filling the real template and re-rendering it —
+// each checkbox lands exactly where it visually belongs. Two quirks in HUB's own template, not
+// something this app can work around: the Business Type checkboxes for LLC/Individual/
+// Partnership/Joint Venture/Other each share their underlying PDF field with an unrelated
+// Extension Endorsement Request checkbox on the last page (only "Corporation" doesn't), so
+// picking one of those marks an extra box there too — harmless since Extension Endorsement is
+// for an already-bound policy, not this initial quote, but worth knowing about. And Additional
+// Interest has no "type" checkboxes on the real form at all — the address just goes in whichever
+// of the 5 rows matches the chosen type.
+const BUILDERS_RISK_TEXT_FIELD_MAP = {
+  insuredName: "Insured Name",
+  insuredEmail: "Email Address 1",
+  insuredPhone: "Email Address 2", // mislabeled on the template; positionally this is Phone #
+  insuredFax: "Fax",
+  insuredAddress: "Insureds Address",
+  insuredCity: "City",
+  insuredState: "State",
+  insuredZip: "ZIP Code",
+  ageOfExistingStructure: "Age of existing structure",
+  scopeOfRemodelingWork: "Scope of Remodeling Work",
+  projectAddress: "Project Address",
+  intendedOccupancy: "Intended Occupancy",
+  amountRenovation: "Amount of RenovationImprovements",
+  existingBuildingValue: "Existing Building or Structure Value",
+  totalCompletedValueOneStructure: "Total Completed Value of Any One Structure",
+  totalCompletedValue: "Total Completed Value of All Covered Property",
+  numberOfStories: "Number of Stories",
+  squareFootage: "Square Footage including basement",
+  lengthOfProject: "Length of Project",
+  projectStartDate: "If yes what date",
+  percentComplete: "Percent Complete",
+  expectedCompletionDate: "Expected completion date of project",
+  contractorName: "Name of Contractor",
+  fullyEnclosedDate: "When will the building be fully enclosed",
+  cappedDate: "When will the building be capped reach highest point",
+  offSiteStorageAddress: "Yes address",
+  percentGlass: "What percent of the structure is glass",
+  policyEffectiveDate: "Desired Policy Effective Date",
+  softCostsLimit: "Yes required limit",
+};
+
+// Checkbox fields keyed by the value a select field takes (a chosen option, or "Yes"/"No").
+const BUILDERS_RISK_CHECKBOX_MAP = {
+  namedInsuredDescription: { Owner: "Check Box8", Contractor: "Check Box9", "Owner/Contractor": "Check Box10" },
+  businessType: {
+    Corporation: "Check Box7",
+    LLC: "Check Box2",
+    Individual: "Check Box6",
+    Partnership: "Check Box3",
+    "Joint Venture": "Check Box5",
+    Other: "Check Box4",
+  },
+  typeOfProperty: { Residential: "Check Box15", Commercial: "Check Box16" },
+  constructionMaterials: {
+    Frame: "Check Box17",
+    "Joisted Masonry": "Check Box18",
+    "Non-Combustible": "Check Box19",
+    "Masonry Non-Combustible": "Check Box20",
+    "Fire Resistive": "Check Box21",
+  },
+  occupiedDuringConstruction: { Yes: "Check Box22", No: "Check Box23" },
+  insuringMultipleBuildings: { Yes: "Check Box24", No: "Check Box25" },
+  previousDamage: { Yes: "Check Box26", No: "Check Box27" },
+  projectStarted: { Yes: "Check Box28", No: "Check Box29" },
+  isModular: { Yes: "Check Box30", No: "Check Box31" },
+  nearTidalWater: { Yes: "Check Box32", No: "Check Box33" },
+  salesContract: { Yes: "Check Box34", No: "Check Box35" },
+  locationFenced: { Yes: "Check Box36", No: "Check Box37" },
+  builderNameDifferent: { Yes: "Check Box38", No: "Check Box39" },
+  builderExperience: { Yes: "Check Box40", No: "Check Box41" },
+  structuresProjected12mo: { "1-3": "Check Box42", "3-50": "Check Box43" },
+  priorLossOver10k: { Yes: "Check Box44", No: "Check Box45" },
+  offSiteStorage: { Yes: "Check Box46", No: "Check Box47" },
+  glassImpactResistant: { Yes: "Check Box48", No: "Check Box49" },
+  allOtherPerilsDeductible: {
+    "$1,000": "Check Box56",
+    "$2,500": "Check Box55",
+    "$5,000": "Check Box54",
+    "$10,000": "Check Box50",
+    "$25,000": "Check Box51",
+  },
+  windCoverage: { Yes: "Check Box53", No: "Check Box52" },
+  businessIncomeCoverage: {
+    "No Coverage": "Check Box57",
+    "Business Income & Extra Expense": "Check Box58",
+    "Business Income Only": "Check Box59",
+    "Extra Expense Only": "Check Box60",
+  },
+  softCostsCoverage: { Yes: "Check Box61", No: "Check Box62" },
+};
+
+// "Type of Project" is genuinely multi-select on the real form, so BUILDERS_RISK_FIELDS keeps it
+// as free text — this keyword-matches that text against the 4 real checkboxes when filling the
+// actual template (a project can plausibly be, say, both new construction and a remodel of an
+// adjoining existing structure, which is exactly why the real form allows more than one).
+const BUILDERS_RISK_TYPE_OF_PROJECT_KEYWORDS = [
+  { re: /new construction/i, field: "Check Box11" },
+  { re: /installation/i, field: "Check Box12" },
+  { re: /excluding/i, field: "Check Box13" },
+  { re: /including/i, field: "Check Box14" },
+];
+
+// The 5 real rows on the Additional Interest page, in order — no "type" checkboxes exist, so the
+// chosen type just picks which row's text field gets the mailing address.
+const BUILDERS_RISK_ADDL_INTEREST_ROWS = [
+  "Mortgagee", "Loss Payee", "Add'l Insured – Builder", "Add'l Insured – Other", "Premium Finance Co.",
+];

@@ -2757,10 +2757,10 @@
   }
 
   // ---------- Builder's Risk Quote Request ----------
-  // A meaningful subset of the real HUB International "Builders Risk Application" (a 124-field
-  // fillable PDF) — insurance elections, deductibles, construction materials, and additional
-  // interests still have to be filled in on the real form by hand, since none of that is data
-  // this app tracks.
+  // The digital form here mirrors HUB International's real "Builders Risk Application" (a
+  // 124-field fillable PDF), and Export fills that actual PDF and hands it back in the same
+  // layout — see buildBuildersRiskFilledTemplatePdf below. Only the Extension Endorsement
+  // section (for an already-bound policy, not an initial quote) is left out.
 
   function getBuildersRisk(project) {
     project.buildersRisk = project.buildersRisk || {};
@@ -2841,8 +2841,11 @@
 
   function updateBuildersRiskProgressLabel(project) {
     const { filled, total } = countBuildersRiskFieldsFilled(project);
-    buildersRiskProgress.textContent = `${filled} of ${total} fields filled — Type of Project is free text since the real ` +
-      `form allows checking more than one box; the Extension Endorsement section (for an already-bound policy) isn't included here.`;
+    buildersRiskProgress.textContent = `${filled} of ${total} fields filled — Export fills in HUB's real form itself, checkboxes ` +
+      `and all. Type of Project is free text here since the real form allows checking more than one box, and the Extension ` +
+      `Endorsement section (for an already-bound policy) is left blank. One template quirk: choosing any Business Type other ` +
+      `than Corporation also marks an unrelated box on the Extension Endorsement page, since HUB's own PDF reuses that ` +
+      `checkbox in both places — harmless since that section isn't used for an initial quote, but worth knowing about.`;
   }
 
   function renderBuildersRiskBody(project) {
@@ -2918,35 +2921,73 @@
     exportBtn.disabled = true;
     exportBtn.textContent = "Exporting…";
     try {
-      const blob = await buildBuildersRiskPdf(project);
-      await offerDownload(`${sanitizeFilename(project.name)}_Builders_Risk_Quote_Request.pdf`, blob);
+      const blob = await buildBuildersRiskFilledTemplatePdf(project);
+      await offerDownload(`${sanitizeFilename(project.name)}_Builders_Risk_Application.pdf`, blob);
+    } catch (err) {
+      await miniAlert("Couldn't fill the form: " + (err && err.message ? err.message : err));
     } finally {
       exportBtn.disabled = false;
       exportBtn.textContent = originalLabel;
     }
   }
 
-  async function buildBuildersRiskPdf(project) {
-    const { PDFDocument, StandardFonts } = PDFLib;
+  function base64ToUint8Array(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  // Fills HUB International's actual Builders Risk Application PDF (embedded as
+  // BUILDERS_RISK_TEMPLATE_BASE64) and hands it back in the exact same layout — real checkboxes
+  // checked, real text fields filled — rather than a reformatted summary. The field-name
+  // mappings (BUILDERS_RISK_TEXT_FIELD_MAP / BUILDERS_RISK_CHECKBOX_MAP / etc., in
+  // checklist-data.js) were verified by actually filling the template and re-rendering it to
+  // confirm every checkbox lands in the right box.
+  async function buildBuildersRiskFilledTemplatePdf(project) {
+    const { PDFDocument } = PDFLib;
     const data = getBuildersRisk(project);
-    const doc = await PDFDocument.create();
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
-    const b = createPdfFormBuilder(doc, font, boldFont);
+    const templateBytes = base64ToUint8Array(BUILDERS_RISK_TEMPLATE_BASE64);
+    const doc = await PDFDocument.load(templateBytes);
+    const form = doc.getForm();
 
-    b.title("Builder's Risk Quote Request");
-    b.subtitle(`${project.name} — ${project.location}`);
-    b.wrappedBlock(null, "Matches HUB International's Builders Risk Application. The Extension Endorsement section " +
-      "(for an already-bound policy) isn't included since this is an initial quote request.");
-    b.spacer(6);
+    function setText(name, value) {
+      if (!value) return;
+      try { form.getTextField(name).setText(String(value)); } catch (e) { /* field missing on this template revision — skip */ }
+    }
+    function check(name) {
+      if (!name) return;
+      try { form.getCheckBox(name).check(); } catch (e) { /* same */ }
+    }
 
-    let lastSection = null;
-    BUILDERS_RISK_FIELDS.forEach((f) => {
-      if (f.section !== lastSection) {
-        b.sectionBar(f.section);
-        lastSection = f.section;
-      }
-      b.fieldLine(f.label, formatFieldValueForPdf(f, data[f.id]), 240);
+    Object.keys(BUILDERS_RISK_TEXT_FIELD_MAP).forEach((fieldId) => {
+      const field = BUILDERS_RISK_FIELDS.find((f) => f.id === fieldId);
+      const value = field ? formatFieldValueForPdf(field, data[fieldId]) : data[fieldId];
+      setText(BUILDERS_RISK_TEXT_FIELD_MAP[fieldId], value);
+    });
+
+    Object.keys(BUILDERS_RISK_CHECKBOX_MAP).forEach((fieldId) => {
+      const chosen = data[fieldId];
+      if (!chosen) return;
+      check(BUILDERS_RISK_CHECKBOX_MAP[fieldId][chosen]);
+    });
+
+    // Type of Project is free text (the real form allows checking more than one box) — keyword
+    // match it against the 4 real checkboxes.
+    const typeOfProjectText = data.typeOfProject || "";
+    BUILDERS_RISK_TYPE_OF_PROJECT_KEYWORDS.forEach(({ re, field }) => {
+      if (re.test(typeOfProjectText)) check(field);
+    });
+
+    // Additional Interest has no "type" checkboxes on the real form — the address goes directly
+    // into whichever of the 5 rows matches the chosen type.
+    [1, 2].forEach((n) => {
+      const type = data[`addlInterest${n}Type`];
+      const address = data[`addlInterest${n}Address`];
+      if (!type || !address) return;
+      const rowIndex = BUILDERS_RISK_ADDL_INTEREST_ROWS.indexOf(type);
+      if (rowIndex < 0) return;
+      setText(`Additional Interest ${n} please provide mailing addresses and select typeRow${rowIndex + 1}`, address);
     });
 
     const bytes = await doc.save();
