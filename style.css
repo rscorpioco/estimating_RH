@@ -870,6 +870,10 @@ dialog.level-dialog {
   width: 920px;
 }
 
+dialog.pdpo-dialog {
+  width: 900px;
+}
+
 .level-group-header {
   display: flex;
   align-items: center;
@@ -1006,6 +1010,63 @@ dialog.level-dialog {
   margin: 0 0 10px;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.pdpo-design-ad-wrap {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.pdpo-design-milestones {
+  flex: 2;
+  min-width: 380px;
+}
+
+.pdpo-advertisement {
+  flex: 1;
+  min-width: 220px;
+}
+
+.design-milestones-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12.5px;
+  margin-bottom: 8px;
+}
+
+.design-milestones-table th:nth-child(1), .design-milestones-table td:nth-child(1) { width: 30%; }
+.design-milestones-table th:nth-child(2), .design-milestones-table td:nth-child(2) { width: 10%; }
+.design-milestones-table th:nth-child(3), .design-milestones-table td:nth-child(3) { width: 21%; }
+.design-milestones-table th:nth-child(4), .design-milestones-table td:nth-child(4) { width: 23%; }
+.design-milestones-table th:nth-child(5), .design-milestones-table td:nth-child(5) { width: 16%; }
+
+.design-milestones-table th {
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  border-bottom: 2px solid var(--border);
+  padding: 5px 6px;
+}
+
+.design-milestones-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.design-milestones-table input {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 12px;
+  padding: 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: inherit;
 }
 
 .pdpo-contact-list {

@@ -296,7 +296,18 @@ const SCHEDULE_RULES = [
     time: null,
     allDay: true,
     type: "external",
-    note: "From the Deliverable Due Date set in PD/PO Coordination.",
+    note: "From the Construction Documents row's Precon Deliverable Return Date, in PD/PO Coordination's Design Milestones.",
+  },
+  {
+    id: "advertisement",
+    label: "Calendar Invite: Advertisement",
+    action: "Advertisement",
+    anchor: "pdpoCdSchedule",
+    offsetDays: 30,
+    time: null,
+    allDay: true,
+    type: "external",
+    note: "30 days after the Construction Documents row's Design Schedule Date, in PD/PO Coordination's Design Milestones.",
   },
   {
     id: "kickoff",
@@ -612,33 +623,34 @@ const SCHEDULE_RULES = [
 // Bid Due or Client Due date changes. This stays fixed regardless of what dates are set.
 const SCHEDULE_RULE_ORDER = {
   pdpoDeliverableDue: 1,
-  kickoff: 2,
-  emailNof: 3,
-  emailPrecon: 4,
-  staffgcreview: 5,
-  email6sLeveling: 6,
-  shareBidList: 7,
-  siteVisit: 8,
-  emailBond: 9,
-  emailBuildersRisk: 10,
-  takeoffreview: 11,
-  preconreview: 12,
-  bidmanualblock: 13,
-  scheduleLogisticsPlan: 14,
-  pageTurn: 15,
-  constructabilityReview: 16,
-  email6sSubBidStatus: 17,
-  rfiLog1: 18,
-  discoveryStatus: 19,
-  firstPassEstimate: 20,
-  preconInternalReview: 21,
-  bidManualIssued: 22,
-  bidLevelDay: 23,
-  subBidsGutCheck: 24,
-  staffGcFinalReview: 25,
-  internalReview: 26,
-  architectClientReview: 27,
-  clientTeamReview: 28,
+  advertisement: 2,
+  kickoff: 3,
+  emailNof: 4,
+  emailPrecon: 5,
+  staffgcreview: 6,
+  email6sLeveling: 7,
+  shareBidList: 8,
+  siteVisit: 9,
+  emailBond: 10,
+  emailBuildersRisk: 11,
+  takeoffreview: 12,
+  preconreview: 13,
+  bidmanualblock: 14,
+  scheduleLogisticsPlan: 15,
+  pageTurn: 16,
+  constructabilityReview: 17,
+  email6sSubBidStatus: 18,
+  rfiLog1: 19,
+  discoveryStatus: 20,
+  firstPassEstimate: 21,
+  preconInternalReview: 22,
+  bidManualIssued: 23,
+  bidLevelDay: 24,
+  subBidsGutCheck: 25,
+  staffGcFinalReview: 26,
+  internalReview: 27,
+  architectClientReview: 28,
+  clientTeamReview: 29,
 };
 
 // ---------- Kickoff / Bid Day Package ----------
@@ -959,7 +971,6 @@ const PDPO_FIELDS = [
   { id: "estimateContractStart", label: "Estimate Contract Start", type: "date", section: "Schedule & Estimate" },
   { id: "constructionStart", label: "Construction Start", type: "date", section: "Schedule & Estimate" },
   { id: "constructionEnd", label: "Construction End", type: "date", section: "Schedule & Estimate" },
-  { id: "deliverableDates", label: "Deliverable Due Date", type: "date", section: "Schedule & Estimate" },
 
   { id: "staffingGcsGrs", label: "Staffing / GCs / GRs", type: "textarea", section: "Staffing" },
 
@@ -976,6 +987,37 @@ const PDPO_TEAM_ROLES = [
   { id: "po", label: "PO — Project Operations" },
   { id: "fm", label: "FM" },
   { id: "pd", label: "PD — Project Development" },
+];
+
+// ---------- PD/PO Design Milestones ----------
+// One row per design stage — % of Design, the owner/architect's own Design Schedule date for
+// that stage, and the date Precon's deliverable (estimate/GMP) is due back for it. The 4 default
+// rows are the standard CM stages; +Add/Remove let a project add its own (e.g. a second CD
+// submission) or drop one that doesn't apply. Rows keep a stable `id` — "cd" specifically is
+// what the Deliverable Due and Advertisement calendar invites anchor to, since Construction
+// Documents is the milestone that actually drives both (GMP deliverable back, ad 30 days after
+// CDs are dated) — so renaming a row's label is safe, but removing the "cd" row itself un-anchors
+// those two invites until it's added back.
+const PDPO_DESIGN_MILESTONE_DEFAULTS = [
+  { id: "concept", name: "Conceptual", percentDesign: "", designScheduleDate: "", preconReturnDate: "" },
+  { id: "sd", name: "Schematic Design", percentDesign: "", designScheduleDate: "", preconReturnDate: "" },
+  { id: "dd", name: "Design Development", percentDesign: "", designScheduleDate: "", preconReturnDate: "" },
+  { id: "cd", name: "Construction Documents", percentDesign: "", designScheduleDate: "", preconReturnDate: "" },
+];
+
+// ---------- PD/PO Advertisement ----------
+// Mirrors Scorpio's "Advertisement for Bid" document (project scope blurb, RFI/Bid due dates,
+// who to contact for bid instructions, where bids get submitted) — tracked here, next to Design
+// Milestones, since the ad can't go out until the design schedule/CDs are set.
+const PDPO_ADVERTISEMENT_FIELDS = [
+  { id: "scopeOfWork", label: "Scope of Work Summary", type: "textarea" },
+  { id: "rfiDueDate", label: "RFIs Due Date", type: "date" },
+  { id: "rfiDueTime", label: "RFIs Due Time", type: "time" },
+  { id: "bidDueDate", label: "Bids Due Date", type: "date" },
+  { id: "bidDueTime", label: "Bids Due Time", type: "time" },
+  { id: "bidInstructionsContact", label: "Bid Instructions Contact Name", type: "text", defaultValue: "Rachel Hottor" },
+  { id: "bidInstructionsEmail", label: "Bid Instructions Contact Email", type: "text", defaultValue: "rachel@scorpioco.com" },
+  { id: "submissionEmail", label: "Bid Submission Email", type: "text", defaultValue: "bids@scorpioco.com" },
 ];
 
 // ---------- Precon Start Up Form ----------
@@ -1037,21 +1079,80 @@ const BOND_FIELDS = [
 ];
 
 // ---------- Builder's Risk Quote Request ----------
-// A meaningful subset of the real HUB International "Builders Risk Application" (a 124-field
-// fillable PDF) that this app can actually help with — insurance elections, deductibles,
-// construction materials, and additional interests still have to be filled in on the real form
-// by hand, since none of that is data this app tracks.
+// Transcribed field-for-field from HUB International's real "Builders Risk Application" (a real
+// filled example is what this was built from) — every field on its Insured/Construction
+// Project/Builder-Contractor/Coverage/Additional Interest pages that's a plain fill-in, single
+// choice, or Yes/No. Not covered: "Type of Project" is genuinely multi-select on the real form
+// (more than one box can be checked at once) so it's a free-text field here rather than a single
+// dropdown, and the "Extension Endorsement Request" section is left off entirely since it only
+// applies to an already-bound policy, not an initial quote request.
+const BUILDERS_RISK_YES_NO = NOF_YES_NO;
 const BUILDERS_RISK_FIELDS = [
-  { id: "insuredName", label: "Insured Name", type: "text" },
-  { id: "namedInsuredDescription", label: "Description of the Named Insured (Owner / Contractor / Owner-Contractor)", type: "text" },
-  { id: "insuredAddress", label: "Insured's Address", type: "text" },
-  { id: "insuredCityStateZip", label: "Insured City, State, ZIP", type: "text" },
-  { id: "projectAddress", label: "Project Address", type: "text" },
-  { id: "typeOfProject", label: "Type of Project", type: "text" },
-  { id: "squareFootage", label: "Square Footage (Including Basement)", type: "text" },
-  { id: "totalCompletedValue", label: "Total Completed Value of All Covered Property", type: "text" },
-  { id: "lengthOfProject", label: "Length of Project", type: "text" },
-  { id: "contractorName", label: "Name of Contractor", type: "text", defaultValue: "D. E. Scorpio Corporation" },
-  { id: "policyEffectiveDate", label: "Desired Policy Effective Date", type: "date" },
-  { id: "expectedCompletionDate", label: "Expected Completion Date of Project", type: "date" },
+  // Insured Information
+  { id: "insuredName", label: "Insured Name", type: "text", section: "Insured Information" },
+  { id: "insuredEmail", label: "Email Address", type: "text", section: "Insured Information" },
+  { id: "insuredPhone", label: "Phone #", type: "text", section: "Insured Information" },
+  { id: "insuredFax", label: "Fax #", type: "text", section: "Insured Information" },
+  { id: "insuredAddress", label: "Insured's Address", type: "text", section: "Insured Information" },
+  { id: "insuredCity", label: "City", type: "text", section: "Insured Information" },
+  { id: "insuredState", label: "State", type: "text", defaultValue: "FL", section: "Insured Information" },
+  { id: "insuredZip", label: "ZIP Code", type: "text", section: "Insured Information" },
+  { id: "businessType", label: "Business Type", type: "select", options: ["Corporation", "LLC", "Individual", "Partnership", "Joint Venture", "Other"], defaultValue: "Corporation", section: "Insured Information" },
+  { id: "namedInsuredDescription", label: "Description of the Named Insured", type: "select", options: ["Owner", "Contractor", "Owner/Contractor"], defaultValue: "Contractor", section: "Insured Information" },
+
+  // Construction Project Information
+  { id: "typeOfProject", label: "Type of Project (New Construction / Installation / Remodeling — Excluding or Including existing structure)", type: "text", section: "Construction Project Information" },
+  { id: "ageOfExistingStructure", label: "Age of Existing Structure (if remodeling)", type: "text", section: "Construction Project Information" },
+  { id: "scopeOfRemodelingWork", label: "Scope of Remodeling Work (if remodeling)", type: "text", section: "Construction Project Information" },
+  { id: "typeOfProperty", label: "Type of Property", type: "select", options: ["Residential", "Commercial"], defaultValue: "Commercial", section: "Construction Project Information" },
+  { id: "constructionMaterials", label: "Construction Materials", type: "select", options: ["Frame", "Joisted Masonry", "Non-Combustible", "Masonry Non-Combustible", "Fire Resistive"], section: "Construction Project Information" },
+  { id: "projectAddress", label: "Project Address", type: "text", section: "Construction Project Information" },
+  { id: "intendedOccupancy", label: "Intended Occupancy", type: "text", section: "Construction Project Information" },
+  { id: "amountRenovation", label: "Amount of Renovation/Improvements", type: "text", section: "Construction Project Information" },
+  { id: "existingBuildingValue", label: "Existing Building or Structure Value", type: "text", section: "Construction Project Information" },
+  { id: "totalCompletedValueOneStructure", label: "Total Completed Value of Any One Structure", type: "text", section: "Construction Project Information" },
+  { id: "totalCompletedValue", label: "Total Completed Value of All Covered Property", type: "text", section: "Construction Project Information" },
+  { id: "numberOfStories", label: "Number of Stories", type: "text", section: "Construction Project Information" },
+  { id: "squareFootage", label: "Square Footage (Including Basement)", type: "text", section: "Construction Project Information" },
+  { id: "lengthOfProject", label: "Length of Project", type: "text", section: "Construction Project Information" },
+  { id: "occupiedDuringConstruction", label: "Will the Structure Be Occupied During Construction?", type: "select", options: BUILDERS_RISK_YES_NO, section: "Construction Project Information" },
+  { id: "insuringMultipleBuildings", label: "Insuring More Than One Building/Structure on This Policy?", type: "select", options: BUILDERS_RISK_YES_NO, section: "Construction Project Information" },
+  { id: "previousDamage", label: "Any Previous Damage (Quake, Flood, Wind, Fire, Vandalism)?", type: "select", options: BUILDERS_RISK_YES_NO, section: "Construction Project Information" },
+  { id: "projectStarted", label: "Has the Project Started?", type: "select", options: BUILDERS_RISK_YES_NO, section: "Construction Project Information" },
+  { id: "projectStartDate", label: "If Yes, What Date?", type: "date", section: "Construction Project Information" },
+  { id: "percentComplete", label: "Percent Complete", type: "text", section: "Construction Project Information" },
+  { id: "expectedCompletionDate", label: "Expected Completion Date of Project", type: "date", section: "Construction Project Information" },
+  { id: "isModular", label: "Is the Structure Modular?", type: "select", options: BUILDERS_RISK_YES_NO, section: "Construction Project Information" },
+  { id: "nearTidalWater", label: "Within 1,000 ft. of Tidal Water or on a Barrier Island?", type: "select", options: BUILDERS_RISK_YES_NO, section: "Construction Project Information" },
+  { id: "salesContract", label: "Is There a Sales Contract on the Structure?", type: "select", options: BUILDERS_RISK_YES_NO, section: "Construction Project Information" },
+  { id: "locationFenced", label: "Is the Location Fenced?", type: "select", options: BUILDERS_RISK_YES_NO, section: "Construction Project Information" },
+
+  // Builder/Contractor Information
+  { id: "builderNameDifferent", label: "Is the Builder's Name Different From the Named Insured?", type: "select", options: BUILDERS_RISK_YES_NO, defaultValue: "No", section: "Builder/Contractor Information" },
+  { id: "contractorName", label: "Name of Contractor", type: "text", defaultValue: "D. E. Scorpio Corporation", section: "Builder/Contractor Information" },
+  { id: "builderExperience", label: "Does the Builder/Remodeler/GC/Owner Have at Least 2 Years of Experience?", type: "select", options: BUILDERS_RISK_YES_NO, defaultValue: "Yes", section: "Builder/Contractor Information" },
+  { id: "structuresProjected12mo", label: "Number of Structures/Projects Projected for the Next 12 Months", type: "select", options: ["1-3", "3-50", "Other"], section: "Builder/Contractor Information" },
+  { id: "priorLossOver10k", label: "Any Single Loss/Damage Over $10,000 in the Past 3 Years?", type: "select", options: BUILDERS_RISK_YES_NO, section: "Builder/Contractor Information" },
+  { id: "fullyEnclosedDate", label: "When Will the Building Be Fully Enclosed?", type: "text", section: "Builder/Contractor Information" },
+  { id: "cappedDate", label: "When Will the Building Be Capped (Reach Highest Point)?", type: "text", section: "Builder/Contractor Information" },
+  { id: "offSiteStorage", label: "Is There Storage Off Site?", type: "select", options: BUILDERS_RISK_YES_NO, section: "Builder/Contractor Information" },
+  { id: "offSiteStorageAddress", label: "Off-Site Storage Address / Max Value Stored (if yes)", type: "text", section: "Builder/Contractor Information" },
+  { id: "glassImpactResistant", label: "Is the Glass Impact Resistant?", type: "select", options: BUILDERS_RISK_YES_NO, section: "Builder/Contractor Information" },
+  { id: "percentGlass", label: "What Percent of the Structure Is Glass?", type: "text", section: "Builder/Contractor Information" },
+
+  // Coverage Information
+  { id: "policyEffectiveDate", label: "Desired Policy Effective Date", type: "date", section: "Coverage Information" },
+  { id: "allOtherPerilsDeductible", label: "All Other Perils Deductible", type: "select", options: ["$1,000", "$2,500", "$5,000", "$10,000", "$25,000"], section: "Coverage Information" },
+  { id: "windCoverage", label: "Include Wind Coverage?", type: "select", options: BUILDERS_RISK_YES_NO, section: "Coverage Information" },
+  { id: "businessIncomeCoverage", label: "Business Income & Extra Expense Coverages", type: "select", options: ["No Coverage", "Business Income & Extra Expense", "Business Income Only", "Extra Expense Only"], section: "Coverage Information" },
+  { id: "softCostsCoverage", label: "Include Soft Costs Coverage?", type: "select", options: BUILDERS_RISK_YES_NO, section: "Coverage Information" },
+  { id: "softCostsLimit", label: "Soft Costs Required Limit (if yes)", type: "text", section: "Coverage Information" },
+
+  // Additional Interest — only asked for on the real form when the value of all covered property
+  // tops $3M, in which case a Timeline, Proforma Income Statement, Typical Floor Plan/Site Plan,
+  // Geotechnical Report, and Construction Budget also have to be attached separately by hand.
+  { id: "addlInterest1Type", label: "Additional Interest #1 Type", type: "select", options: ["Mortgagee", "Loss Payee", "Add'l Insured – Builder", "Add'l Insured – Other", "Premium Finance Co."], section: "Additional Interest" },
+  { id: "addlInterest1Address", label: "Additional Interest #1 Mailing Address", type: "text", section: "Additional Interest" },
+  { id: "addlInterest2Type", label: "Additional Interest #2 Type", type: "select", options: ["Mortgagee", "Loss Payee", "Add'l Insured – Builder", "Add'l Insured – Other", "Premium Finance Co."], section: "Additional Interest" },
+  { id: "addlInterest2Address", label: "Additional Interest #2 Mailing Address", type: "text", section: "Additional Interest" },
 ];

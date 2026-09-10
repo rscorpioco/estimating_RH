@@ -838,7 +838,14 @@
     if (anchor === "bidDue") return project.bidDueDate;
     if (anchor === "clientDue") return project.clientDueDate;
     if (anchor === "levelApproved") return (project.levelAssignments && project.levelAssignments.approvedDate) || "";
-    if (anchor === "pdpoDeliverable") return (project.pdpoCoordination && project.pdpoCoordination.fields && project.pdpoCoordination.fields.deliverableDates) || "";
+    if (anchor === "pdpoDeliverable") {
+      const cd = findDesignMilestone(project, "cd");
+      return (cd && cd.preconReturnDate) || "";
+    }
+    if (anchor === "pdpoCdSchedule") {
+      const cd = findDesignMilestone(project, "cd");
+      return (cd && cd.designScheduleDate) || "";
+    }
     return "";
   }
 
@@ -846,7 +853,8 @@
     if (rule.anchor === "bidDue") return "— set a Bid Due Date to compute";
     if (rule.anchor === "clientDue") return "— set a Client Deliverable Due Date to compute";
     if (rule.anchor === "levelApproved") return "— set the Level Assignments Approved Date to compute (in 6S Level Assignments)";
-    if (rule.anchor === "pdpoDeliverable") return "— set the Deliverable Due Date to compute (in PD/PO Coordination)";
+    if (rule.anchor === "pdpoDeliverable") return "— set the Construction Documents row's Precon Deliverable Return Date to compute (in PD/PO Coordination)";
+    if (rule.anchor === "pdpoCdSchedule") return "— set the Construction Documents row's Design Schedule Date to compute (in PD/PO Coordination)";
     if (rule.anchor === "activate") return "— missing Activate Date";
     // No anchor at all — either it's a send-anytime action with no fixed date (email-only rules)
     // or it depends on something the app can't compute (e.g. a site visit date from the ITB).
@@ -1820,6 +1828,25 @@
     return project.pdpoCoordination;
   }
 
+  // Design Milestones — a row per design stage, seeded from the 4 standard ones but freely
+  // addable/removable. Deep-copied off the defaults so editing one project's rows never mutates
+  // the seed constant (same reasoning as TEAM_ROSTER_SEED elsewhere).
+  function getDesignMilestones(project) {
+    const pdpo = getPdPoCoordination(project);
+    if (!pdpo.designMilestones) pdpo.designMilestones = JSON.parse(JSON.stringify(PDPO_DESIGN_MILESTONE_DEFAULTS));
+    return pdpo.designMilestones;
+  }
+
+  function findDesignMilestone(project, rowId) {
+    return getDesignMilestones(project).find((r) => r.id === rowId);
+  }
+
+  function getPdPoAdvertisement(project) {
+    const pdpo = getPdPoCoordination(project);
+    pdpo.advertisement = pdpo.advertisement || {};
+    return pdpo.advertisement;
+  }
+
   function countPdPoFieldsFilled(project) {
     const data = getPdPoCoordination(project);
     const fieldsFilled = PDPO_FIELDS.filter((f) => {
@@ -1895,8 +1922,166 @@
     });
     flushRow();
 
+    pdpoBody.appendChild(renderPdPoDesignAndAdvertisementSection(project));
     pdpoBody.appendChild(renderPdPoContactInfoSection(project));
     pdpoBody.appendChild(renderPdPoTeamSection(project));
+  }
+
+  // Design Milestones and Advertisement side by side — Advertisement can't go out until the
+  // design schedule (specifically Construction Documents) is set, so they're grouped together.
+  function renderPdPoDesignAndAdvertisementSection(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "pdpo-design-ad-wrap";
+    wrap.appendChild(renderDesignMilestonesSection(project));
+    wrap.appendChild(renderAdvertisementSection(project));
+    return wrap;
+  }
+
+  function renderDesignMilestonesSection(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "pdpo-design-milestones";
+
+    const title = document.createElement("div");
+    title.className = "nof-section-title";
+    title.textContent = "Design Milestones";
+    wrap.appendChild(title);
+
+    const note = document.createElement("p");
+    note.className = "pdpo-linked-note";
+    note.textContent = "The Construction Documents row drives the Deliverable Due and Advertisement calendar invites (Deliverable Due Return Date, and 30 days after Design Schedule Date).";
+    wrap.appendChild(note);
+
+    const table = document.createElement("table");
+    table.className = "design-milestones-table";
+    table.innerHTML = `
+      <thead>
+        <tr><th>Milestone</th><th>% of Design</th><th>Design Schedule Date</th><th>Precon Deliverable Return Date</th><th></th></tr>
+      </thead>
+    `;
+    const tbody = document.createElement("tbody");
+    const rows = getDesignMilestones(project);
+
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+
+      const nameCell = document.createElement("td");
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = row.name || "";
+      nameInput.addEventListener("input", () => { row.name = nameInput.value; saveState(); });
+      nameCell.appendChild(nameInput);
+      tr.appendChild(nameCell);
+
+      const pctCell = document.createElement("td");
+      const pctInput = document.createElement("input");
+      pctInput.type = "text";
+      pctInput.placeholder = "%";
+      pctInput.value = row.percentDesign || "";
+      pctInput.addEventListener("input", () => { row.percentDesign = pctInput.value; saveState(); });
+      pctCell.appendChild(pctInput);
+      tr.appendChild(pctCell);
+
+      const schedCell = document.createElement("td");
+      const schedInput = document.createElement("input");
+      schedInput.type = "date";
+      schedInput.value = row.designScheduleDate || "";
+      schedInput.addEventListener("input", () => { row.designScheduleDate = schedInput.value; saveState(); });
+      schedCell.appendChild(schedInput);
+      tr.appendChild(schedCell);
+
+      const returnCell = document.createElement("td");
+      const returnInput = document.createElement("input");
+      returnInput.type = "date";
+      returnInput.value = row.preconReturnDate || "";
+      returnInput.addEventListener("input", () => { row.preconReturnDate = returnInput.value; saveState(); });
+      returnCell.appendChild(returnInput);
+      tr.appendChild(returnCell);
+
+      const removeCell = document.createElement("td");
+      const removeBtn = document.createElement("button");
+      removeBtn.type = "button";
+      removeBtn.className = "btn btn-sm level-remove-bp-btn";
+      removeBtn.textContent = "Remove";
+      removeBtn.addEventListener("click", async () => {
+        const ok = await miniConfirm(`Remove the "${row.name || "untitled"}" milestone row?`, { okLabel: "Remove", danger: true });
+        if (!ok) return;
+        const list = getDesignMilestones(project);
+        const idx = list.findIndex((r) => r.id === row.id);
+        if (idx >= 0) list.splice(idx, 1);
+        saveState();
+        renderPdPoBody(project);
+      });
+      removeCell.appendChild(removeBtn);
+      tr.appendChild(removeCell);
+
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "btn btn-sm level-add-bp-btn";
+    addBtn.textContent = "+ Add Milestone";
+    addBtn.addEventListener("click", async () => {
+      const name = await miniPrompt("New milestone name:");
+      if (!name || !name.trim()) return;
+      getDesignMilestones(project).push({
+        id: "custom_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        name: name.trim(),
+        percentDesign: "",
+        designScheduleDate: "",
+        preconReturnDate: "",
+      });
+      saveState();
+      renderPdPoBody(project);
+    });
+    wrap.appendChild(addBtn);
+
+    return wrap;
+  }
+
+  function renderAdvertisementSection(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "pdpo-advertisement";
+
+    const title = document.createElement("div");
+    title.className = "nof-section-title";
+    title.textContent = "Advertisement";
+    wrap.appendChild(title);
+
+    const data = getPdPoAdvertisement(project);
+    if (data.bidInstructionsContact === undefined) data.bidInstructionsContact = "";
+    PDPO_ADVERTISEMENT_FIELDS.forEach((field) => {
+      if (data[field.id] === undefined) data[field.id] = field.defaultValue || "";
+      wrap.appendChild(renderAdvertisementField(project, field));
+    });
+
+    return wrap;
+  }
+
+  function renderAdvertisementField(project, field) {
+    const data = getPdPoAdvertisement(project);
+    const fieldWrap = document.createElement("div");
+    fieldWrap.className = "nof-field";
+
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    labelText.textContent = field.label;
+    label.appendChild(labelText);
+
+    const input = document.createElement(field.type === "textarea" ? "textarea" : "input");
+    if (field.type !== "textarea") input.type = field.type;
+    input.value = data[field.id] || "";
+    input.addEventListener("input", () => {
+      data[field.id] = input.value;
+      saveState();
+    });
+
+    label.appendChild(input);
+    fieldWrap.appendChild(label);
+    return fieldWrap;
   }
 
   function renderPdPoField(project, field) {
@@ -2582,12 +2767,20 @@
     return project.buildersRisk;
   }
 
+  // Insured Name/Address/City/etc. default to Scorpio's own info, not the project owner's — on
+  // a real Builder's Risk application Scorpio is the named insured as Contractor (see
+  // namedInsuredDescription's "Contractor" default), the same as Bond Request's
+  // BOND_REQUESTOR_NAME. Only the project-specific fields (address, sq ft, value, dates) pull
+  // from the New Opportunity Form.
   function applyBuildersRiskDefaults(project) {
     const data = getBuildersRisk(project);
     const opp = project.opportunity || {};
-    if (data.insuredName === undefined) data.insuredName = opp.ownerCompany || "";
-    if (data.insuredAddress === undefined) data.insuredAddress = opp.ownerAddress || "";
-    if (data.insuredCityStateZip === undefined) data.insuredCityStateZip = opp.ownerCityStateZip || "";
+    if (data.insuredName === undefined) data.insuredName = BOND_REQUESTOR_NAME;
+    if (data.insuredEmail === undefined) data.insuredEmail = "rachel@scorpioco.com";
+    if (data.insuredPhone === undefined) data.insuredPhone = "352-872-5638";
+    if (data.insuredAddress === undefined) data.insuredAddress = "3911 W. Newberry Rd";
+    if (data.insuredCity === undefined) data.insuredCity = "Gainesville";
+    if (data.insuredZip === undefined) data.insuredZip = "32607";
     if (data.projectAddress === undefined) data.projectAddress = opp.jobsiteAddress || "";
     if (data.squareFootage === undefined) data.squareFootage = opp.projectSqFt || "";
     if (data.totalCompletedValue === undefined) data.totalCompletedValue = opp.estProjectValue || "";
@@ -2648,19 +2841,36 @@
 
   function updateBuildersRiskProgressLabel(project) {
     const { filled, total } = countBuildersRiskFieldsFilled(project);
-    buildersRiskProgress.textContent = `${filled} of ${total} fields filled — the rest of the official application ` +
-      `(materials, coverage elections, deductibles, additional interests) still has to be filled in by hand`;
+    buildersRiskProgress.textContent = `${filled} of ${total} fields filled — Type of Project is free text since the real ` +
+      `form allows checking more than one box; the Extension Endorsement section (for an already-bound policy) isn't included here.`;
   }
 
   function renderBuildersRiskBody(project) {
     buildersRiskBody.innerHTML = "";
-    for (let i = 0; i < BUILDERS_RISK_FIELDS.length; i += 2) {
-      const row = document.createElement("div");
-      row.className = "nof-row";
-      row.appendChild(renderBuildersRiskField(project, BUILDERS_RISK_FIELDS[i]));
-      row.appendChild(BUILDERS_RISK_FIELDS[i + 1] ? renderBuildersRiskField(project, BUILDERS_RISK_FIELDS[i + 1]) : emptyOpportunityField());
-      buildersRiskBody.appendChild(row);
-    }
+    let lastSection = null;
+    let rowBuffer = [];
+    const flushRow = () => {
+      if (!rowBuffer.length) return;
+      const rowEl = document.createElement("div");
+      rowEl.className = "nof-row";
+      rowEl.appendChild(rowBuffer[0]);
+      rowEl.appendChild(rowBuffer[1] || emptyOpportunityField());
+      buildersRiskBody.appendChild(rowEl);
+      rowBuffer = [];
+    };
+    BUILDERS_RISK_FIELDS.forEach((field) => {
+      if (field.section !== lastSection) {
+        flushRow();
+        const title = document.createElement("div");
+        title.className = "nof-section-title";
+        title.textContent = field.section;
+        buildersRiskBody.appendChild(title);
+        lastSection = field.section;
+      }
+      rowBuffer.push(renderBuildersRiskField(project, field));
+      if (rowBuffer.length === 2) flushRow();
+    });
+    flushRow();
   }
 
   function renderBuildersRiskField(project, field) {
@@ -2673,11 +2883,19 @@
     labelText.textContent = field.label;
     label.appendChild(labelText);
 
-    const input = document.createElement("input");
-    input.type = field.type === "date" ? "date" : "text";
-    input.value = data[field.id] || "";
+    let input;
+    if (field.type === "select") {
+      input = document.createElement("select");
+      input.add(new Option("—", ""));
+      field.options.forEach((opt) => input.add(new Option(opt, opt)));
+      input.value = data[field.id] || "";
+    } else {
+      input = document.createElement("input");
+      input.type = field.type === "date" ? "date" : "text";
+      input.value = data[field.id] || "";
+    }
     input.id = "buildersRisk_" + field.id;
-    input.addEventListener("input", () => {
+    input.addEventListener(field.type === "select" ? "change" : "input", () => {
       data[field.id] = input.value;
       saveState();
       updateBuildersRiskProgressLabel(project);
@@ -2716,13 +2934,18 @@
     const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
     const b = createPdfFormBuilder(doc, font, boldFont);
 
-    b.title("Builder's Risk Quote Request — Known Fields");
+    b.title("Builder's Risk Quote Request");
     b.subtitle(`${project.name} — ${project.location}`);
-    b.wrappedBlock(null, "The rest of the official HUB International application (materials, coverage " +
-      "elections, deductibles, additional interests) still needs to be filled in by hand.");
+    b.wrappedBlock(null, "Matches HUB International's Builders Risk Application. The Extension Endorsement section " +
+      "(for an already-bound policy) isn't included since this is an initial quote request.");
     b.spacer(6);
 
+    let lastSection = null;
     BUILDERS_RISK_FIELDS.forEach((f) => {
+      if (f.section !== lastSection) {
+        b.sectionBar(f.section);
+        lastSection = f.section;
+      }
       b.fieldLine(f.label, formatFieldValueForPdf(f, data[f.id]), 240);
     });
 
