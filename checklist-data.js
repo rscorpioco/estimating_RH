@@ -283,10 +283,25 @@ const TEAM_LEAD_OPTIONS = ["Kevin Bradford", "Ken Brown", "Blake Honerbrink", "C
 // Timing rules for the calendar invites/tasks that have a fixed, computable date — all anchored to
 // the project's Activate Date (Day 0) per the first-principles day count.
 // `time` is 24-hour "HH:MM" for a fixed-time event, or null for an all-day/undated task.
+// `action` is a short, clean process description with no "Calendar Invite:"/"E-mail"
+// boilerplate — used (as "Project Name - Action") for the actual Outlook event/message subject,
+// since the boilerplate reads fine in this app's own table but not as an email/invite title.
 const SCHEDULE_RULES = [
+  {
+    id: "pdpoDeliverableDue",
+    label: "Calendar Invite: Deliverable Due",
+    action: "Deliverable Due",
+    anchor: "pdpoDeliverable",
+    offsetDays: 0,
+    time: null,
+    allDay: true,
+    type: "external",
+    note: "From the Deliverable Due Date set in PD/PO Coordination.",
+  },
   {
     id: "kickoff",
     label: "Calendar Invite: Kick Off Meeting",
+    action: "Kick Off Meeting",
     anchor: "activate",
     offsetDays: 3,
     time: "15:30",
@@ -296,6 +311,7 @@ const SCHEDULE_RULES = [
   {
     id: "staffgcreview",
     label: "Meeting Invite: Staff & GC Estimate Review (VP Precon)",
+    action: "Staff & GC Estimate Review (VP Precon)",
     anchor: "activate",
     offsetDays: 4,
     time: null,
@@ -305,6 +321,7 @@ const SCHEDULE_RULES = [
   {
     id: "takeoffreview",
     label: "Meeting Invite: Take-Off Estimate Review (VP Precon)",
+    action: "Take-Off Estimate Review (VP Precon)",
     anchor: "activate",
     offsetDays: 13,
     time: null,
@@ -315,6 +332,7 @@ const SCHEDULE_RULES = [
   {
     id: "preconreview",
     label: "Meeting Invite: Precon Estimate Review (Leadership)",
+    action: "Precon Estimate Review (Leadership)",
     anchor: "activate",
     offsetDays: 14,
     time: null,
@@ -325,6 +343,7 @@ const SCHEDULE_RULES = [
   {
     id: "bidmanualblock",
     label: "Time Block: Bid Manual Creation",
+    action: "Bid Manual Creation",
     anchor: "activate",
     offsetDays: 16,
     time: null,
@@ -336,6 +355,7 @@ const SCHEDULE_RULES = [
   {
     id: "bidLevelDay",
     label: "Calendar Invite: Level Day / Bid Day",
+    action: "Level Day / Bid Day",
     anchor: "activate",
     offsetDays: 21,
     time: null,
@@ -351,6 +371,7 @@ const SCHEDULE_RULES = [
   {
     id: "email6sLeveling",
     label: "E-mail 6S Leveling",
+    action: "6S Leveling",
     anchor: null,
     type: "external",
     actions: ["email"],
@@ -361,6 +382,7 @@ const SCHEDULE_RULES = [
   {
     id: "emailNof",
     label: "Email New Opportunity Form",
+    action: "New Opportunity Form",
     anchor: null,
     type: "external",
     condition: "NoContract",
@@ -372,6 +394,7 @@ const SCHEDULE_RULES = [
   {
     id: "emailPrecon",
     label: "Email Precon Form",
+    action: "Precon Form",
     anchor: null,
     type: "external",
     condition: "HasContract",
@@ -383,6 +406,7 @@ const SCHEDULE_RULES = [
   {
     id: "emailBond",
     label: "Email Bond Request",
+    action: "Bond Request",
     anchor: null,
     type: "external",
     actions: ["email"],
@@ -393,6 +417,7 @@ const SCHEDULE_RULES = [
   {
     id: "emailBuildersRisk",
     label: "Email Builder's Risk Quote Request",
+    action: "Builder's Risk Quote Request",
     anchor: null,
     type: "external",
     actions: ["email"],
@@ -405,6 +430,7 @@ const SCHEDULE_RULES = [
   {
     id: "siteVisit",
     label: "Calendar Invite: Site Visit",
+    action: "Site Visit",
     anchor: null,
     type: "external",
     condition: "HasDrawings",
@@ -413,6 +439,7 @@ const SCHEDULE_RULES = [
   {
     id: "shareBidList",
     label: "E-mail project team: Share Bid List to Team for CM",
+    action: "Share Bid List to Team",
     anchor: null,
     type: "external",
     condition: "CM",
@@ -423,6 +450,7 @@ const SCHEDULE_RULES = [
   {
     id: "constructabilityReview",
     label: "Constructability Review with Field Manager Team Leaders and Operations Team Leaders",
+    action: "Constructability Review",
     anchor: "bidDue",
     offsetDays: -14,
     time: null,
@@ -435,6 +463,7 @@ const SCHEDULE_RULES = [
   {
     id: "email6sSubBidStatus",
     label: "Email to 6S Team to Report Sub Bidding Status",
+    action: "Report Sub Bidding Status to 6S Team",
     anchor: "bidDue",
     offsetDays: -14,
     type: "external",
@@ -445,6 +474,7 @@ const SCHEDULE_RULES = [
   {
     id: "scheduleLogisticsPlan",
     label: "Calendar Invite: Schedule Request & Logistics Plan",
+    action: "Schedule Request & Logistics Plan",
     anchor: "bidDue",
     offsetDays: -28,
     time: null,
@@ -456,6 +486,7 @@ const SCHEDULE_RULES = [
   {
     id: "pageTurn",
     label: "Calendar Invite: Page Turn",
+    action: "Page Turn",
     anchor: "bidDue",
     offsetDays: -28,
     time: null,
@@ -466,6 +497,7 @@ const SCHEDULE_RULES = [
   {
     id: "rfiLog1",
     label: "Calendar Invite: RFI Log #1 Submitted",
+    action: "RFI Log #1 Submitted",
     anchor: "bidDue",
     offsetDays: -14,
     time: null,
@@ -476,6 +508,7 @@ const SCHEDULE_RULES = [
   {
     id: "discoveryStatus",
     label: "Calendar Invite: Discovery Status Updated (subcontractor coverage, scope, etc.)",
+    action: "Discovery Status Updated",
     anchor: "bidDue",
     offsetDays: -14,
     time: null,
@@ -486,6 +519,7 @@ const SCHEDULE_RULES = [
   {
     id: "firstPassEstimate",
     label: "Calendar Invite: First Pass Estimate and General Staffing/Conditions/Requirements Complete and Issued",
+    action: "First Pass Estimate & General Staffing Complete",
     anchor: "bidDue",
     offsetDays: -14,
     time: null,
@@ -496,6 +530,7 @@ const SCHEDULE_RULES = [
   {
     id: "staffGcFinalReview",
     label: "Calendar Invite: Staff & GC Review (Final Draft Ready for Review)",
+    action: "Staff & GC Review (Final Draft Ready)",
     anchor: "clientDue",
     offsetDays: -2,
     time: null,
@@ -506,6 +541,7 @@ const SCHEDULE_RULES = [
   {
     id: "bidManualIssued",
     label: "Calendar Invite: Bid Manual Issued / 6S Scopes Due / Level Sheets",
+    action: "Bid Manual Issued / 6S Scopes Due / Level Sheets",
     anchor: "bidDue",
     offsetDays: -7,
     time: null,
@@ -516,6 +552,7 @@ const SCHEDULE_RULES = [
   {
     id: "subBidsGutCheck",
     label: "Calendar Invite: Sub Bids Due – Market Feedback Gut Check",
+    action: "Sub Bids Due – Market Feedback Gut Check",
     anchor: "bidDue",
     offsetDays: 1,
     time: null,
@@ -526,6 +563,7 @@ const SCHEDULE_RULES = [
   {
     id: "preconInternalReview",
     label: "Calendar Invite: Precon Internal Deliverable Review Mtg",
+    action: "Precon Internal Deliverable Review",
     anchor: "bidDue",
     offsetDays: -7,
     time: null,
@@ -536,6 +574,7 @@ const SCHEDULE_RULES = [
   {
     id: "internalReview",
     label: "Calendar Invite: Details Review Mtg (Final Draft Ready for Review)",
+    action: "Details Review Mtg",
     anchor: "clientDue",
     offsetDays: -2,
     time: null,
@@ -546,6 +585,7 @@ const SCHEDULE_RULES = [
   {
     id: "architectClientReview",
     label: "Calendar Invite: Architect & Client Only Deliverable Review (Phone Call)",
+    action: "Architect & Client Only Deliverable Review",
     anchor: "clientDue",
     offsetDays: -1,
     time: null,
@@ -556,6 +596,7 @@ const SCHEDULE_RULES = [
   {
     id: "clientTeamReview",
     label: "Calendar Invite: Client & Team Deliverable Review",
+    action: "Client & Team Deliverable Review",
     anchor: "clientDue",
     offsetDays: 2,
     time: null,
@@ -570,33 +611,34 @@ const SCHEDULE_RULES = [
 // send-anytime email actions (no computed date at all) and reorder the whole table any time a
 // Bid Due or Client Due date changes. This stays fixed regardless of what dates are set.
 const SCHEDULE_RULE_ORDER = {
-  kickoff: 1,
-  emailNof: 2,
-  emailPrecon: 3,
-  staffgcreview: 4,
-  email6sLeveling: 5,
-  shareBidList: 6,
-  siteVisit: 7,
-  emailBond: 8,
-  emailBuildersRisk: 9,
-  takeoffreview: 10,
-  preconreview: 11,
-  bidmanualblock: 12,
-  scheduleLogisticsPlan: 13,
-  pageTurn: 14,
-  constructabilityReview: 15,
-  email6sSubBidStatus: 16,
-  rfiLog1: 17,
-  discoveryStatus: 18,
-  firstPassEstimate: 19,
-  preconInternalReview: 20,
-  bidManualIssued: 21,
-  bidLevelDay: 22,
-  subBidsGutCheck: 23,
-  staffGcFinalReview: 24,
-  internalReview: 25,
-  architectClientReview: 26,
-  clientTeamReview: 27,
+  pdpoDeliverableDue: 1,
+  kickoff: 2,
+  emailNof: 3,
+  emailPrecon: 4,
+  staffgcreview: 5,
+  email6sLeveling: 6,
+  shareBidList: 7,
+  siteVisit: 8,
+  emailBond: 9,
+  emailBuildersRisk: 10,
+  takeoffreview: 11,
+  preconreview: 12,
+  bidmanualblock: 13,
+  scheduleLogisticsPlan: 14,
+  pageTurn: 15,
+  constructabilityReview: 16,
+  email6sSubBidStatus: 17,
+  rfiLog1: 18,
+  discoveryStatus: 19,
+  firstPassEstimate: 20,
+  preconInternalReview: 21,
+  bidManualIssued: 22,
+  bidLevelDay: 23,
+  subBidsGutCheck: 24,
+  staffGcFinalReview: 25,
+  internalReview: 26,
+  architectClientReview: 27,
+  clientTeamReview: 28,
 };
 
 // ---------- Kickoff / Bid Day Package ----------
@@ -917,7 +959,7 @@ const PDPO_FIELDS = [
   { id: "estimateContractStart", label: "Estimate Contract Start", type: "date", section: "Schedule & Estimate" },
   { id: "constructionStart", label: "Construction Start", type: "date", section: "Schedule & Estimate" },
   { id: "constructionEnd", label: "Construction End", type: "date", section: "Schedule & Estimate" },
-  { id: "deliverableDates", label: "Deliverable Date(s)", type: "text", section: "Schedule & Estimate" },
+  { id: "deliverableDates", label: "Deliverable Due Date", type: "date", section: "Schedule & Estimate" },
 
   { id: "staffingGcsGrs", label: "Staffing / GCs / GRs", type: "textarea", section: "Staffing" },
 

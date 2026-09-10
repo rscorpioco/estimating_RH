@@ -838,6 +838,7 @@
     if (anchor === "bidDue") return project.bidDueDate;
     if (anchor === "clientDue") return project.clientDueDate;
     if (anchor === "levelApproved") return (project.levelAssignments && project.levelAssignments.approvedDate) || "";
+    if (anchor === "pdpoDeliverable") return (project.pdpoCoordination && project.pdpoCoordination.fields && project.pdpoCoordination.fields.deliverableDates) || "";
     return "";
   }
 
@@ -845,6 +846,7 @@
     if (rule.anchor === "bidDue") return "— set a Bid Due Date to compute";
     if (rule.anchor === "clientDue") return "— set a Client Deliverable Due Date to compute";
     if (rule.anchor === "levelApproved") return "— set the Level Assignments Approved Date to compute (in 6S Level Assignments)";
+    if (rule.anchor === "pdpoDeliverable") return "— set the Deliverable Due Date to compute (in PD/PO Coordination)";
     if (rule.anchor === "activate") return "— missing Activate Date";
     // No anchor at all — either it's a send-anytime action with no fixed date (email-only rules)
     // or it depends on something the app can't compute (e.g. a site visit date from the ITB).
@@ -872,7 +874,11 @@
   // This opens Outlook in a new tab with the invite ready to review — nothing is sent until
   // the user clicks Send there. A static page can't complete a real Graph/OAuth sign-in on its
   // own, so a prefilled compose link is the honest, no-backend way to hand this off to Outlook.
-  function buildOutlookDeepLink(rule, date, label) {
+  // Subject is "Project Name - Action" — `action` is a short, clean process description (the
+  // caller resolves it from rule.action, with the CMAR/Hard-Bid Level-Day/Bid-Day substitution
+  // already applied) with none of the "Calendar Invite:"/"E-mail" boilerplate `rule.label` (used
+  // for display in this app's own table) carries.
+  function buildOutlookDeepLink(rule, date, action, project) {
     if (!date) return null;
     const pad = (n) => String(n).padStart(2, "0");
     const y = date.getFullYear();
@@ -895,7 +901,7 @@
     }
 
     const params = new URLSearchParams({
-      subject: label,
+      subject: `${project.name} - ${action}`,
       startdt,
       enddt,
       allday,
@@ -911,11 +917,11 @@
   // 6S Leveling) instead of a calendar invite. Nothing can attach the exported file for the
   // user (a static page can't reach into Outlook's compose window that way), so attachHint just
   // reminds them to grab it from the relevant form's Export button first.
-  function buildOutlookMailDeepLink(rule, label, project) {
+  function buildOutlookMailDeepLink(rule, action, project) {
     const bodyParts = [rule.emailBody || rule.note || ""];
     if (rule.attachHint) bodyParts.push(rule.attachHint);
     const params = new URLSearchParams({
-      subject: `${rule.emailSubject || label} — ${project.name}`,
+      subject: `${project.name} - ${action}`,
       body: bodyParts.filter(Boolean).join("\n\n"),
     });
     if (rule.to && rule.to.length) params.set("to", rule.to.join(";"));
@@ -977,6 +983,7 @@
     rows.forEach(({ rule, date, dateLabel, timeLabel }) => {
       const tr = document.createElement("tr");
       const label = rule.id === "bidLevelDay" ? rule.label.replace("Level Day / Bid Day", levelOrBid) : rule.label;
+      const action = rule.id === "bidLevelDay" ? rule.action.replace("Level Day / Bid Day", levelOrBid) : rule.action;
       const typeChip = rule.type === "external" ? '<span class="type-chip external">Sends to others</span>' : '<span class="type-chip self">Self task</span>';
       tr.innerHTML = `
         <td></td>
@@ -1016,7 +1023,7 @@
       };
 
       if (actions.includes("calendar")) {
-        const link = buildOutlookDeepLink(rule, date, label);
+        const link = buildOutlookDeepLink(rule, date, action, project);
         if (link) {
           const a = document.createElement("a");
           a.href = link;
@@ -1029,7 +1036,7 @@
         }
       }
       if (actions.includes("email")) {
-        const mailLink = buildOutlookMailDeepLink(rule, label, project);
+        const mailLink = buildOutlookMailDeepLink(rule, action, project);
         const a = document.createElement("a");
         a.href = mailLink;
         a.target = "_blank";
