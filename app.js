@@ -330,6 +330,7 @@
 
     document.getElementById("closePdpoBtn").addEventListener("click", () => pdpoDialog.close());
     document.getElementById("closePdpoBtn2").addEventListener("click", () => pdpoDialog.close());
+    document.getElementById("exportPdpoBtn").addEventListener("click", handleExportPdpo);
     pdpoDialog.addEventListener("close", () => {
       renderProjectList();
       renderActiveProject();
@@ -2058,6 +2059,13 @@
       wrap.appendChild(renderAdvertisementField(project, field));
     });
 
+    const printBtn = document.createElement("button");
+    printBtn.type = "button";
+    printBtn.className = "btn btn-sm level-add-bp-btn";
+    printBtn.textContent = "Print Advertisement (.pdf)";
+    printBtn.addEventListener("click", () => handleExportAdvertisement(project, printBtn));
+    wrap.appendChild(printBtn);
+
     return wrap;
   }
 
@@ -2277,6 +2285,148 @@
     });
     wrap.appendChild(grid);
     return wrap;
+  }
+
+  async function handleExportPdpo() {
+    const project = state.projects.find((p) => p.id === pdpoProjectId);
+    if (!project) return;
+    if (typeof PDFLib === "undefined") {
+      await miniAlert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
+      return;
+    }
+    const exportBtn = document.getElementById("exportPdpoBtn");
+    const originalLabel = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = "Exporting…";
+    try {
+      const blob = await buildPdPoCoordinationPdf(project);
+      await offerDownload(`${sanitizeFilename(project.name)}_PDPO_Coordination.pdf`, blob);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = originalLabel;
+    }
+  }
+
+  async function buildPdPoCoordinationPdf(project) {
+    const { PDFDocument, StandardFonts } = PDFLib;
+    const data = getPdPoCoordination(project);
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const b = createPdfFormBuilder(doc, font, boldFont);
+
+    b.title("Coordination with Internal PO & PD");
+    b.subtitle(`${project.name} — ${project.location}`);
+    b.spacer(6);
+
+    let lastSection = null;
+    PDPO_FIELDS.forEach((field) => {
+      if (field.section !== lastSection) {
+        b.spacer(lastSection ? 4 : 0);
+        b.sectionBar(field.section);
+        lastSection = field.section;
+      }
+      b.fieldLine(field.label, formatFieldValueForPdf(field, data.fields[field.id]), 240);
+    });
+    b.spacer(10);
+
+    b.sectionBar("Design Milestones");
+    b.tableHeaderRow(["Milestone", "% Design", "Design Sched.", "Precon Return"], [0, 200, 280, 400]);
+    getDesignMilestones(project).forEach((row) => {
+      b.tableRow([
+        row.name || "—",
+        row.percentDesign || "—",
+        row.designScheduleDate ? formatDate(new Date(row.designScheduleDate + "T00:00:00")) : "—",
+        row.preconReturnDate ? formatDate(new Date(row.preconReturnDate + "T00:00:00")) : "—",
+      ], [0, 200, 280, 400]);
+    });
+    b.spacer(10);
+
+    b.sectionBar("Advertisement");
+    const ad = getPdPoAdvertisement(project);
+    PDPO_ADVERTISEMENT_FIELDS.forEach((field) => {
+      b.fieldLine(field.label, formatFieldValueForPdf(field, ad[field.id]), 240);
+    });
+    b.spacer(10);
+
+    b.sectionBar("Important Contact Information");
+    const opp = project.opportunity || {};
+    const usingContract = !!(project.contractClient && Object.keys(project.contractClient).length);
+    const clientSource = usingContract ? project.contractClient : opp;
+    b.twoCol("Client Company", clientSource.ownerCompany, "Client Contact", clientSource.ownerContactName);
+    b.twoCol("Client Phone", clientSource.ownerPhone, "Client Email", clientSource.ownerEmail);
+    b.spacer(4);
+    b.twoCol("Architect Company", opp.architectCo, "Architect Contact", opp.architectContactName);
+    b.twoCol("Architect Phone", opp.architectPhone, "Architect Email", opp.architectEmail);
+    b.spacer(4);
+    b.twoCol("Civil Engineer Co.", opp.civilEngineerCo, "Civil Engineer", opp.civilEngineerName);
+    b.twoCol("Structural Engineer Co.", opp.structuralEngineerCo, "Structural Engineer", opp.structuralEngineerName);
+    b.twoCol("MEPFP Engineer Co.", opp.mepfpEngineerCo, "MEPFP Engineer", opp.mepfpEngineerName);
+    b.spacer(10);
+
+    b.sectionBar("Scorpio Team");
+    const team = data.team;
+    PDPO_TEAM_ROLES.forEach((role, i) => {
+      const next = PDPO_TEAM_ROLES[i + 1];
+      if (i % 2 === 0) {
+        b.twoCol(role.label, team[role.id], next ? next.label : null, next ? team[next.id] : null);
+      }
+    });
+
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: "application/pdf" });
+  }
+
+  // Standalone Advertisement export — separate from the full PD/PO Coordination export above
+  // because this one gets saved to Rachel's own files as her record of when/what was posted for
+  // bid, not filled out as part of the internal PO/PD coordination packet.
+  async function handleExportAdvertisement(project, btn) {
+    if (typeof PDFLib === "undefined") {
+      await miniAlert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
+      return;
+    }
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Exporting…";
+    try {
+      const blob = await buildAdvertisementPdf(project);
+      await offerDownload(`${sanitizeFilename(project.name)}_Advertisement_for_Bid.pdf`, blob);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    }
+  }
+
+  async function buildAdvertisementPdf(project) {
+    const { PDFDocument, StandardFonts } = PDFLib;
+    const data = getPdPoAdvertisement(project);
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const b = createPdfFormBuilder(doc, font, boldFont);
+
+    b.title("Advertisement for Bid");
+    b.subtitle(`${project.name} — ${project.location}`);
+    b.spacer(6);
+
+    b.wrappedBlock("Scope of Work", data.scopeOfWork || "—");
+    b.spacer(6);
+
+    b.sectionBar("Bid Schedule");
+    b.twoCol("RFIs Due Date", data.rfiDueDate ? formatDate(new Date(data.rfiDueDate + "T00:00:00")) : "—", "RFIs Due Time", data.rfiDueTime || "—");
+    b.twoCol("Bids Due Date", data.bidDueDate ? formatDate(new Date(data.bidDueDate + "T00:00:00")) : "—", "Bids Due Time", data.bidDueTime || "—");
+    b.spacer(10);
+
+    b.sectionBar("Bid Instructions");
+    b.fieldLine("Contact Name", data.bidInstructionsContact, 200);
+    b.fieldLine("Contact Email", data.bidInstructionsEmail, 200);
+    b.fieldLine("Bid Submission Email", data.submissionEmail, 200);
+    b.spacer(10);
+
+    b.wrappedBlock(null, `Posted for record on ${formatDate(new Date())}.`);
+
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: "application/pdf" });
   }
 
   // ---------- Precon Start Up Form ----------
