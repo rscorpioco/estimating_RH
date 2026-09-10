@@ -1026,13 +1026,18 @@ const PDPO_ADVERTISEMENT_FIELDS = [
 // composite "Project Number(A) + Owner + Project Name" field is handled the same way the New
 // Opportunity Form's dateOwnerProject is: auto-built, "[Owner]" swapped in once extraction or
 // the NOF supplies one, and left alone the moment it's edited by hand.
+// billingType/billingContact are "textarea" (not "text") specifically so they get a full-width,
+// multi-line entry box instead of being squeezed into a half-width row next to a date field —
+// both routinely run longer than a single line (e.g. "Monthly installment payment based on %
+// complete..." / a full name + email address) and were getting cut off both on screen and in the
+// PDF export when paired two-up like the other fields.
 const PRECON_FIELDS = [
   { id: "totalPreconValue", label: "Total Preconstruction Services Value", type: "currency" },
   { id: "dateSubmitted", label: "Date This Form Is Submitted", type: "date" },
   { id: "estimatedStart", label: "Estimated Start of Precon", type: "date" },
-  { id: "billingType", label: "Billing Type", type: "text" },
   { id: "estimatedEnd", label: "Estimated End of Precon", type: "date" },
-  { id: "billingContact", label: "Billing Contact Name and Email", type: "text" },
+  { id: "billingType", label: "Billing Type", type: "textarea" },
+  { id: "billingContact", label: "Billing Contact Name and Email", type: "textarea" },
 ];
 
 // The PC Services Billing Schedule of Values — one $ amount + one date per milestone.

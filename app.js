@@ -2535,13 +2535,24 @@
     genTitle.textContent = "General Information";
     preconBody.appendChild(genTitle);
 
-    for (let i = 0; i < PRECON_FIELDS.length; i += 2) {
+    const pairedFields = PRECON_FIELDS.filter((f) => f.type !== "textarea");
+    const fullWidthFields = PRECON_FIELDS.filter((f) => f.type === "textarea");
+
+    for (let i = 0; i < pairedFields.length; i += 2) {
       const row = document.createElement("div");
       row.className = "nof-row";
-      row.appendChild(renderPreconField(project, PRECON_FIELDS[i]));
-      row.appendChild(PRECON_FIELDS[i + 1] ? renderPreconField(project, PRECON_FIELDS[i + 1]) : emptyOpportunityField());
+      row.appendChild(renderPreconField(project, pairedFields[i]));
+      row.appendChild(pairedFields[i + 1] ? renderPreconField(project, pairedFields[i + 1]) : emptyOpportunityField());
       preconBody.appendChild(row);
     }
+
+    fullWidthFields.forEach((field) => {
+      const row = document.createElement("div");
+      row.className = "nof-row";
+      row.style.gridTemplateColumns = "1fr";
+      row.appendChild(renderPreconField(project, field));
+      preconBody.appendChild(row);
+    });
 
     const sovTitle = document.createElement("div");
     sovTitle.className = "nof-section-title";
@@ -2570,8 +2581,10 @@
     labelText.textContent = field.label;
     label.appendChild(labelText);
 
-    const input = document.createElement("input");
-    input.type = field.type === "date" ? "date" : field.type === "currency" ? "number" : "text";
+    const input = document.createElement(field.type === "textarea" ? "textarea" : "input");
+    if (field.type !== "textarea") {
+      input.type = field.type === "date" ? "date" : field.type === "currency" ? "number" : "text";
+    }
     input.value = data[field.id] || "";
     input.id = "precon_" + field.id;
     input.addEventListener("input", () => {
@@ -2668,14 +2681,20 @@
     b.spacer(6);
 
     b.sectionBar("General Information");
-    for (let i = 0; i < PRECON_FIELDS.length; i += 2) {
-      const left = PRECON_FIELDS[i], right = PRECON_FIELDS[i + 1];
+    const preconPairedFields = PRECON_FIELDS.filter((f) => f.type !== "textarea");
+    const preconFullWidthFields = PRECON_FIELDS.filter((f) => f.type === "textarea");
+    for (let i = 0; i < preconPairedFields.length; i += 2) {
+      const left = preconPairedFields[i], right = preconPairedFields[i + 1];
       b.twoCol(
         left.label, formatFieldValueForPdf(left, data.fields[left.id]),
         right ? right.label : null, right ? formatFieldValueForPdf(right, data.fields[right.id]) : null
       );
     }
-    b.spacer(10);
+    b.spacer(4);
+    preconFullWidthFields.forEach((field) => {
+      b.wrappedBlock(field.label, formatFieldValueForPdf(field, data.fields[field.id]));
+    });
+    b.spacer(6);
 
     b.sectionBar("PC Services Billing Schedule of Values");
     b.tableHeaderRow(["Milestone", "Value", "Date"], [0, 230, 350]);
