@@ -563,6 +563,40 @@ const SCHEDULE_RULES = [
   },
 ];
 
+// Where each rule falls in the actual real-world sequence of the preconstruction process —
+// used to sort the Meeting & Task Schedule table, since a plain date sort would scatter
+// send-anytime email actions (no computed date at all) and reorder the whole table any time a
+// Bid Due or Client Due date changes. This stays fixed regardless of what dates are set.
+const SCHEDULE_RULE_ORDER = {
+  kickoff: 1,
+  emailNof: 2,
+  emailPrecon: 3,
+  staffgcreview: 4,
+  completeKickoff: 5,
+  email6sLeveling: 6,
+  shareBidList: 7,
+  siteVisit: 8,
+  emailBond: 9,
+  emailBuildersRisk: 10,
+  takeoffreview: 11,
+  preconreview: 12,
+  bidmanualblock: 13,
+  scheduleLogisticsPlan: 14,
+  pageTurn: 15,
+  constructabilityReview: 16,
+  rfiLog1: 17,
+  discoveryStatus: 18,
+  firstPassEstimate: 19,
+  preconInternalReview: 20,
+  bidManualIssued: 21,
+  bidLevelDay: 22,
+  subBidsGutCheck: 23,
+  staffGcFinalReview: 24,
+  internalReview: 25,
+  architectClientReview: 26,
+  clientTeamReview: 27,
+};
+
 // ---------- Kickoff / Bid Day Package ----------
 // The set of drawing categories a kickoff/bid-day package is built from, in the order
 // they get compiled — matches the standard cover-sheet layout used on real projects.

@@ -941,36 +941,79 @@
     return wrap;
   }
 
+  // Manually-tracked "sent" state per schedule row — the app has no way to know whether the
+  // user actually clicked Send in Outlook after "+ Outlook"/"Email" opens it, so this is a
+  // checkbox the user ticks themselves (also auto-ticked the moment they use either action link,
+  // since that's the closest signal of intent the app can see).
+  function getScheduleSent(project) {
+    project.scheduleSent = project.scheduleSent || {};
+    return project.scheduleSent;
+  }
+
   function openScheduleDialog(project) {
     closeAllDialogs(scheduleDialog);
     scheduleProjectName.textContent = `${project.name} — ${project.location}`;
     scheduleBody.innerHTML = "";
 
     const levelOrBid = project.deliveryMethod === "Hard Bid" ? "Bid Day" : "Level Day";
+    const sent = getScheduleSent(project);
 
     const table = document.createElement("table");
     table.className = "schedule-table";
     table.innerHTML = `
       <thead>
-        <tr><th>Item</th><th>Date</th><th>Time</th><th>Type</th><th>Note</th><th></th></tr>
+        <tr><th></th><th>Item</th><th>Date</th><th>Time</th><th>Type</th><th>Note</th><th></th></tr>
       </thead>
     `;
     const tbody = document.createElement("tbody");
 
-    computeSchedule(project).forEach(({ rule, date, dateLabel, timeLabel }) => {
+    // Sorted by where each item actually falls in the real-world process (SCHEDULE_RULE_ORDER),
+    // not by computed date — a date sort would scatter the send-anytime email actions (they have
+    // no date at all) and reshuffle the whole table the moment a Bid Due/Client Due date changes.
+    const rows = computeSchedule(project).sort((a, b) =>
+      (SCHEDULE_RULE_ORDER[a.rule.id] ?? 999) - (SCHEDULE_RULE_ORDER[b.rule.id] ?? 999)
+    );
+
+    rows.forEach(({ rule, date, dateLabel, timeLabel }) => {
       const tr = document.createElement("tr");
       const label = rule.id === "bidLevelDay" ? rule.label.replace("Level Day / Bid Day", levelOrBid) : rule.label;
       const typeChip = rule.type === "external" ? '<span class="type-chip external">Sends to others</span>' : '<span class="type-chip self">Self task</span>';
       tr.innerHTML = `
-        <td>${escapeHtml(label)}</td>
+        <td></td>
+        <td class="schedule-item-cell">${escapeHtml(label)}</td>
         <td class="mono-cell">${escapeHtml(dateLabel)}</td>
         <td class="mono-cell">${escapeHtml(timeLabel || "—")}</td>
         <td>${typeChip}</td>
         <td class="note-cell">${escapeHtml(rule.note || "")}</td>
         <td class="schedule-actions-cell"></td>
       `;
+      const itemCell = tr.children[1];
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.className = "schedule-sent-checkbox";
+      checkbox.checked = !!sent[rule.id];
+      checkbox.title = "Mark sent/done";
+      function applySentStyle() { itemCell.classList.toggle("schedule-sent", checkbox.checked); }
+      applySentStyle();
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) sent[rule.id] = true;
+        else delete sent[rule.id];
+        saveState();
+        applySentStyle();
+      });
+      tr.children[0].appendChild(checkbox);
+
       const actionsCell = tr.lastElementChild;
       const actions = rule.actions || ["calendar"];
+      const markSent = () => {
+        if (!sent[rule.id]) {
+          sent[rule.id] = true;
+          saveState();
+          checkbox.checked = true;
+          applySentStyle();
+        }
+      };
 
       if (actions.includes("calendar")) {
         const link = buildOutlookDeepLink(rule, date, label);
@@ -981,6 +1024,7 @@
           a.rel = "noopener noreferrer";
           a.className = "btn btn-sm outlook-add-btn";
           a.textContent = "+ Outlook";
+          a.addEventListener("click", markSent);
           actionsCell.appendChild(a);
         }
       }
@@ -992,6 +1036,7 @@
         a.rel = "noopener noreferrer";
         a.className = "btn btn-sm outlook-add-btn";
         a.textContent = "Email";
+        a.addEventListener("click", markSent);
         actionsCell.appendChild(a);
       }
       tbody.appendChild(tr);
@@ -1002,7 +1047,7 @@
 
     const note = document.createElement("p");
     note.className = "schedule-note";
-    note.textContent = "\"+ Outlook\" opens a prefilled calendar event and \"Email\" opens a prefilled message, both in Outlook Web — review either and click Send/Save there; nothing goes out until you do. Attendees are only filled in where an email is already known (e.g. Aaron Rogers) — add the rest yourself. Email actions that reference an attachment (a form or the 6S Leveling export) don't attach anything automatically — export the file first and attach it in Outlook before sending.";
+    note.textContent = "\"+ Outlook\" opens a prefilled calendar event and \"Email\" opens a prefilled message, both in Outlook Web — review either and click Send/Save there; nothing goes out until you do. Attendees are only filled in where an email is already known (e.g. Aaron Rogers) — add the rest yourself. Email actions that reference an attachment (a form or the 6S Leveling export) don't attach anything automatically — export the file first and attach it in Outlook before sending. The checkbox on the left is ticked automatically when you click one of those buttons, and you can also tick or untick it yourself.";
     scheduleBody.appendChild(note);
 
     scheduleDialog.showModal();
@@ -1883,12 +1928,22 @@
     return wrap;
   }
 
-  // Architect/Engineer contact info is read straight off the New Opportunity Form's Owner/AEC
-  // section (itself pulled from the Drawings/Specifications) rather than re-entered here — one
-  // source of truth. Client is different: a drawing's "OWNER" callouts are almost never the
-  // actual client party (they're a furnish/install responsibility marker), so Client is read
-  // from the signed Contract specifically (runContractClientExtraction) once one's uploaded,
-  // falling back to the Drawings/Specifications' Owner name before that.
+  // Clears the NOF "Auto"/"From Conformed Set" badge tracking for a field edited from outside
+  // the New Opportunity Form dialog itself (here, from the PD/PO panel) — otherwise a hand
+  // correction made here would still show as machine-extracted the next time the NOF opens.
+  function clearOpportunityAutoFlags(opp, fieldId) {
+    if (opp._linked && opp._linked[fieldId]) opp._linked[fieldId] = false;
+    if (opp._extracted && opp._extracted[fieldId]) delete opp._extracted[fieldId];
+  }
+
+  // Architect/Engineer contact info starts from the New Opportunity Form's Owner/AEC section
+  // (itself pulled from the Drawings/Specifications) — one source of truth, editing here writes
+  // straight back to the same NOF fields. Client is different: a drawing's "OWNER" callouts are
+  // almost never the actual client party (they're a furnish/install responsibility marker), so
+  // Client starts from the signed Contract specifically (runContractClientExtraction) once one's
+  // uploaded, falling back to the Drawings/Specifications' Owner name before that. Either
+  // source's best-effort text scan can miss or misread things, so every field here is editable —
+  // a correction typed here is exactly as authoritative as one typed in the NOF/Precon dialog.
   function renderPdPoContactInfoSection(project) {
     const wrap = document.createElement("div");
 
@@ -1897,41 +1952,93 @@
     title.textContent = "Important Contact Information";
     wrap.appendChild(title);
 
-    const opp = project.opportunity || {};
-    const contractClient = project.contractClient || null;
+    const opp = project.opportunity || (project.opportunity = {});
+    const usingContract = !!(project.contractClient && Object.keys(project.contractClient).length);
 
     const note = document.createElement("p");
     note.className = "pdpo-linked-note";
-    note.textContent = "Architect/Engineer info is pulled from the Drawings/Specifications (via the New Opportunity Form's Owner/AEC section). " +
-      (contractClient
-        ? "Client info is pulled from the signed Contract."
-        : "Client info is pulled from the signed Contract once one's uploaded — until then it falls back to the Owner name found in the Drawings/Specifications.");
+    note.textContent = "Architect/Engineer info starts from the Drawings/Specifications (via the New Opportunity Form's Owner/AEC section); Client starts from the signed Contract once one's uploaded" +
+      (usingContract ? "" : " — until then it falls back to the Owner name found in the Drawings/Specifications") +
+      ". The scan is best-effort and not always right, so every field below is editable — corrections here save immediately and stick.";
     wrap.appendChild(note);
 
-    const clientCo = (contractClient && contractClient.ownerCompany) || opp.ownerCompany;
-    const clientName = (contractClient && contractClient.ownerContactName) || opp.ownerContactName;
-    const clientPhone = (contractClient && contractClient.ownerPhone) || opp.ownerPhone;
-    const clientEmail = (contractClient && contractClient.ownerEmail) || opp.ownerEmail;
-    const rows = [
-      { label: "Client", co: clientCo, name: clientName, phone: clientPhone, email: clientEmail },
-      { label: "Architect", co: opp.architectCo, name: opp.architectContactName, phone: opp.architectPhone, email: opp.architectEmail },
-      { label: "Civil Engineer", co: opp.civilEngineerCo, name: opp.civilEngineerName },
-      { label: "Structural Engineer", co: opp.structuralEngineerCo, name: opp.structuralEngineerName },
-      { label: "MEPFP Engineer", co: opp.mepfpEngineerCo, name: opp.mepfpEngineerName },
-    ];
+    function contactRow(label, fields) {
+      const row = document.createElement("div");
+      row.className = "pdpo-contact-row";
+      const rowLabel = document.createElement("div");
+      rowLabel.className = "pdpo-contact-row-label";
+      rowLabel.textContent = label;
+      row.appendChild(rowLabel);
+
+      const grid = document.createElement("div");
+      grid.className = "pdpo-contact-row-grid";
+      fields.forEach((f) => {
+        const fieldWrap = document.createElement("label");
+        fieldWrap.className = "pdpo-contact-field";
+        const span = document.createElement("span");
+        span.textContent = f.label;
+        fieldWrap.appendChild(span);
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = f.value || "";
+        input.addEventListener("input", () => {
+          f.onChange(input.value);
+          saveState();
+        });
+        fieldWrap.appendChild(input);
+        grid.appendChild(fieldWrap);
+      });
+      row.appendChild(grid);
+      return row;
+    }
+
+    function clientSetter(fieldId) {
+      return (val) => {
+        if (usingContract) {
+          project.contractClient = project.contractClient || {};
+          project.contractClient[fieldId] = val;
+        } else {
+          opp[fieldId] = val;
+          clearOpportunityAutoFlags(opp, fieldId);
+        }
+      };
+    }
+
+    function oppSetter(fieldId) {
+      return (val) => {
+        opp[fieldId] = val;
+        clearOpportunityAutoFlags(opp, fieldId);
+      };
+    }
+
+    const clientSource = usingContract ? project.contractClient : opp;
 
     const list = document.createElement("div");
     list.className = "pdpo-contact-list";
-    rows.forEach((r) => {
-      const item = document.createElement("div");
-      item.className = "pdpo-contact-item";
-      const strong = document.createElement("strong");
-      strong.textContent = r.label + ": ";
-      item.appendChild(strong);
-      const parts = [r.co, r.name, r.phone, r.email].filter(Boolean);
-      item.appendChild(document.createTextNode(parts.length ? parts.join(" — ") : "Not filled in yet"));
-      list.appendChild(item);
-    });
+    list.appendChild(contactRow("Client", [
+      { label: "Company", value: clientSource.ownerCompany, onChange: clientSetter("ownerCompany") },
+      { label: "Name", value: clientSource.ownerContactName, onChange: clientSetter("ownerContactName") },
+      { label: "Phone", value: clientSource.ownerPhone, onChange: clientSetter("ownerPhone") },
+      { label: "Email", value: clientSource.ownerEmail, onChange: clientSetter("ownerEmail") },
+    ]));
+    list.appendChild(contactRow("Architect", [
+      { label: "Company", value: opp.architectCo, onChange: oppSetter("architectCo") },
+      { label: "Name", value: opp.architectContactName, onChange: oppSetter("architectContactName") },
+      { label: "Phone", value: opp.architectPhone, onChange: oppSetter("architectPhone") },
+      { label: "Email", value: opp.architectEmail, onChange: oppSetter("architectEmail") },
+    ]));
+    list.appendChild(contactRow("Civil Engineer", [
+      { label: "Company", value: opp.civilEngineerCo, onChange: oppSetter("civilEngineerCo") },
+      { label: "Name", value: opp.civilEngineerName, onChange: oppSetter("civilEngineerName") },
+    ]));
+    list.appendChild(contactRow("Structural Engineer", [
+      { label: "Company", value: opp.structuralEngineerCo, onChange: oppSetter("structuralEngineerCo") },
+      { label: "Name", value: opp.structuralEngineerName, onChange: oppSetter("structuralEngineerName") },
+    ]));
+    list.appendChild(contactRow("MEPFP Engineer", [
+      { label: "Company", value: opp.mepfpEngineerCo, onChange: oppSetter("mepfpEngineerCo") },
+      { label: "Name", value: opp.mepfpEngineerName, onChange: oppSetter("mepfpEngineerName") },
+    ]));
     wrap.appendChild(list);
     return wrap;
   }
