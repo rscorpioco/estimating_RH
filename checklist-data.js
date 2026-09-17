@@ -742,6 +742,11 @@ const NOF_STAFF_OPTIONS = [
 // than defaulted per office, since who's on a given deal changes project to project.
 const LEVELING_MIN_BIDDERS = 3;
 
+// Post-bid lesson-learned grading, per 6S team member (see the "Provide feedback on 6S Team
+// coverage and performance" post-bid checklist item) — kept as a fixed 3-point scale rather
+// than free text so performance is easy to scan/compare across projects and people.
+const SIXS_FEEDBACK_GRADES = ["Great", "Good", "Fair"];
+
 const LEVELING_TRADE_GROUPS = [
   { name: "SITE", trades: [
     { bp: "Emails", trade: "Bids Email Management" },

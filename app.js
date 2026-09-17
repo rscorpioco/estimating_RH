@@ -72,6 +72,11 @@
   const buildersRiskBody = document.getElementById("buildersRiskBody");
   const buildersRiskProgress = document.getElementById("buildersRiskProgress");
 
+  const sixsFeedbackDialog = document.getElementById("sixsFeedbackDialog");
+  const sixsFeedbackProjectName = document.getElementById("sixsFeedbackProjectName");
+  const sixsFeedbackBody = document.getElementById("sixsFeedbackBody");
+  const sixsFeedbackProgress = document.getElementById("sixsFeedbackProgress");
+
   const miniDialog = document.getElementById("miniDialog");
   const miniDialogForm = document.getElementById("miniDialogForm");
   const miniDialogMessage = document.getElementById("miniDialogMessage");
@@ -123,6 +128,7 @@
   let preconProjectId = null;
   let bondProjectId = null;
   let buildersRiskProjectId = null;
+  let sixsFeedbackProjectId = null;
   // The Kickoff Package's rendered page thumbnails, each page's tagged category, and the parsed
   // pdf.js document (kept around so the zoom view can re-render any page on demand) — generated
   // from the central Drawings upload below, held in memory only (not persisted to localStorage
@@ -260,7 +266,7 @@
   // any other already-open dialog — without this, opening a second one stacks on top of the
   // first, and closing the top one leaves the other sitting there looking "stuck" open.
   function closeAllDialogs(except) {
-    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog, pdpoDialog, preconDialog, bondDialog, buildersRiskDialog].forEach((d) => {
+    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog, pdpoDialog, preconDialog, bondDialog, buildersRiskDialog, sixsFeedbackDialog].forEach((d) => {
       if (d && d !== except && d.open) d.close();
     });
   }
@@ -353,6 +359,13 @@
     document.getElementById("closeBuildersRiskBtn").addEventListener("click", () => buildersRiskDialog.close());
     document.getElementById("exportBuildersRiskBtn").addEventListener("click", handleExportBuildersRisk);
     buildersRiskDialog.addEventListener("close", () => {
+      renderProjectList();
+      renderActiveProject();
+    });
+
+    document.getElementById("closeSixsFeedbackBtn").addEventListener("click", () => sixsFeedbackDialog.close());
+    document.getElementById("exportSixsFeedbackBtn").addEventListener("click", handleExportSixsFeedback);
+    sixsFeedbackDialog.addEventListener("close", () => {
       renderProjectList();
       renderActiveProject();
     });
@@ -669,6 +682,11 @@
       );
     }
 
+    const sixsFeedback = countSixsFeedbackFilled(project);
+    if (sixsFeedback.teamSize > 0) {
+      entries.push({ label: "6S Team Feedback", filled: sixsFeedback.filled, total: sixsFeedback.total, onOpen: () => openSixsFeedbackDialog(project) });
+    }
+
     entries.forEach((entry) => {
       const item = document.createElement("button");
       item.type = "button";
@@ -824,6 +842,10 @@
 
     if (item.id === "act-buildersrisk") {
       wrap.appendChild(renderBuildersRiskAffordance(project));
+    }
+
+    if (item.id === "done-postbid") {
+      wrap.appendChild(renderSixsFeedbackAffordance(project));
     }
 
     return wrap;
@@ -3566,6 +3588,202 @@
     b.sectionBar("Project 6S Team");
     getLevelTeam(project).forEach((person) => {
       b.fieldLine(person.name, person.roles.join(", "), 150);
+    });
+
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: "application/pdf" });
+  }
+
+  // ---------- 6S Team Feedback (Post-Bid Lesson Learned) ----------
+  // Bid Day/Level Day usually has several people helping level trades, so a single free-text
+  // checklist line can't capture "this leveler did great, that one needs coaching on X" — this
+  // reuses the same roster Level Assignments already built (getLevelTeam, keyed by name+roles)
+  // rather than tracking a separate 6S roster of its own, and asks the same 3 questions per person.
+
+  function getSixsFeedback(project) {
+    project.sixsFeedback = project.sixsFeedback || {};
+    project.sixsFeedback.entries = project.sixsFeedback.entries || {};
+    return project.sixsFeedback;
+  }
+
+  function getSixsFeedbackEntry(project, name) {
+    const entries = getSixsFeedback(project).entries;
+    return entries[name] || (entries[name] = { wentWell: "", improve: "", grade: "" });
+  }
+
+  function countSixsFeedbackFilled(project) {
+    const team = getLevelTeam(project);
+    const entries = getSixsFeedback(project).entries;
+    let filled = 0;
+    team.forEach((person) => {
+      const entry = entries[person.name];
+      if (!entry) return;
+      if (entry.wentWell) filled++;
+      if (entry.improve) filled++;
+      if (entry.grade) filled++;
+    });
+    return { filled, total: team.length * 3, teamSize: team.length };
+  }
+
+  function renderSixsFeedbackAffordance(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "item-inline-actions";
+
+    if (!getLevelTeam(project).length) {
+      const hint = document.createElement("span");
+      hint.className = "nof-progress-inline";
+      hint.textContent = "Assign the 6S team in Level Assignments first to unlock this";
+      wrap.appendChild(hint);
+      return wrap;
+    }
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm";
+    btn.textContent = "Fill Out 6S Team Feedback";
+    btn.addEventListener("click", () => openSixsFeedbackDialog(project));
+
+    const { filled, total } = countSixsFeedbackFilled(project);
+    const hint = document.createElement("span");
+    hint.className = "nof-progress-inline";
+    hint.textContent = filled > 0 ? `${filled}/${total} fields filled` : `${total} fields — not started`;
+
+    wrap.appendChild(btn);
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function openSixsFeedbackDialog(project) {
+    closeAllDialogs(sixsFeedbackDialog);
+    sixsFeedbackProjectId = project.id;
+    sixsFeedbackProjectName.textContent = `${project.name} — ${project.location}`;
+    renderSixsFeedbackBody(project);
+    updateSixsFeedbackProgressLabel(project);
+    sixsFeedbackDialog.showModal();
+  }
+
+  function updateSixsFeedbackProgressLabel(project) {
+    const { filled, total } = countSixsFeedbackFilled(project);
+    sixsFeedbackProgress.textContent = `${filled} of ${total} fields filled`;
+  }
+
+  function renderSixsFeedbackBody(project) {
+    sixsFeedbackBody.innerHTML = "";
+
+    const note = document.createElement("p");
+    note.className = "pdpo-linked-note";
+    note.textContent = "Pulled from the 6S team assigned in Level Assignments (captains and levelers) — one lesson-learned entry per person who helped level this bid.";
+    sixsFeedbackBody.appendChild(note);
+
+    const list = document.createElement("div");
+    list.className = "sixs-feedback-list";
+    getLevelTeam(project).forEach((person) => {
+      list.appendChild(renderSixsFeedbackCard(project, person));
+    });
+    sixsFeedbackBody.appendChild(list);
+  }
+
+  function renderSixsFeedbackCard(project, person) {
+    const entry = getSixsFeedbackEntry(project, person.name);
+
+    const card = document.createElement("div");
+    card.className = "sixs-feedback-card";
+
+    const header = document.createElement("div");
+    header.className = "sixs-feedback-card-header";
+    const nameEl = document.createElement("span");
+    nameEl.className = "sixs-feedback-name";
+    nameEl.textContent = person.name;
+    const rolesEl = document.createElement("span");
+    rolesEl.className = "sixs-feedback-roles";
+    rolesEl.textContent = person.roles.join(", ");
+    header.appendChild(nameEl);
+    header.appendChild(rolesEl);
+    card.appendChild(header);
+
+    const grid = document.createElement("div");
+    grid.className = "sixs-feedback-grid";
+
+    function textField(label, key) {
+      const wrap = document.createElement("label");
+      wrap.className = "nof-field";
+      const span = document.createElement("span");
+      span.textContent = label;
+      wrap.appendChild(span);
+      const textarea = document.createElement("textarea");
+      textarea.value = entry[key] || "";
+      textarea.addEventListener("input", () => {
+        entry[key] = textarea.value;
+        saveState();
+        updateSixsFeedbackProgressLabel(project);
+      });
+      wrap.appendChild(textarea);
+      return wrap;
+    }
+
+    grid.appendChild(textField("What Went Well", "wentWell"));
+    grid.appendChild(textField("Could Be Improved", "improve"));
+
+    const gradeWrap = document.createElement("label");
+    gradeWrap.className = "nof-field sixs-feedback-grade";
+    const gradeLabel = document.createElement("span");
+    gradeLabel.textContent = "Overall 6S Performance";
+    gradeWrap.appendChild(gradeLabel);
+    const gradeSelect = document.createElement("select");
+    gradeSelect.add(new Option("— Select —", ""));
+    SIXS_FEEDBACK_GRADES.forEach((g) => gradeSelect.add(new Option(g, g)));
+    gradeSelect.value = entry.grade || "";
+    gradeSelect.addEventListener("change", () => {
+      entry.grade = gradeSelect.value;
+      saveState();
+      updateSixsFeedbackProgressLabel(project);
+    });
+    gradeWrap.appendChild(gradeSelect);
+    grid.appendChild(gradeWrap);
+
+    card.appendChild(grid);
+    return card;
+  }
+
+  async function handleExportSixsFeedback() {
+    const project = state.projects.find((p) => p.id === sixsFeedbackProjectId);
+    if (!project) return;
+    if (typeof PDFLib === "undefined") {
+      await miniAlert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
+      return;
+    }
+    const exportBtn = document.getElementById("exportSixsFeedbackBtn");
+    const originalLabel = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = "Exporting…";
+    try {
+      const blob = await buildSixsFeedbackPdf(project);
+      await offerDownload(`${sanitizeFilename(project.name)}_6S_Team_Feedback.pdf`, blob);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = originalLabel;
+    }
+  }
+
+  async function buildSixsFeedbackPdf(project) {
+    const { PDFDocument, StandardFonts } = PDFLib;
+    const entries = getSixsFeedback(project).entries;
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const b = createPdfFormBuilder(doc, font, boldFont);
+
+    b.title("6S Team Feedback — Lesson Learned");
+    b.subtitle(`${project.name} — ${project.location}`);
+    b.spacer(6);
+
+    getLevelTeam(project).forEach((person) => {
+      const entry = entries[person.name] || {};
+      b.sectionBar(`${person.name}   ·   ${person.roles.join(", ")}`);
+      b.fieldLine("Overall 6S Performance", entry.grade || "—", 200);
+      b.wrappedBlock("What Went Well", entry.wentWell || "—");
+      b.wrappedBlock("Could Be Improved", entry.improve || "—");
+      b.spacer(8);
     });
 
     const bytes = await doc.save();

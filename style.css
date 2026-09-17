@@ -1142,6 +1142,55 @@ dialog.pdpo-dialog {
   color: var(--text);
 }
 
+/* 6S Team Feedback */
+
+.sixs-feedback-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sixs-feedback-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--bg);
+}
+
+.sixs-feedback-card-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.sixs-feedback-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.sixs-feedback-roles {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.sixs-feedback-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.sixs-feedback-grade {
+  grid-column: 1 / -1;
+  max-width: 260px;
+}
+
+@media (max-width: 640px) {
+  .sixs-feedback-grid { grid-template-columns: 1fr; }
+}
+
 /* Team Members */
 
 dialog.team-dialog {
