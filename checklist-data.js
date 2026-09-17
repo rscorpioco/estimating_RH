@@ -269,6 +269,7 @@ const CHECKLIST_PHASES = [
           { text: "E-mail list of new subs to Procore administrator for creation" },
           { text: "Data mine subcontractor proposals for relevant unit costs. Update unit costs database" },
           { text: "Actual Delivered Folder — save BRC + print Sage Bid Day detailed estimate and summary" },
+          { text: "Provide feedback on 6S Team coverage and performance" },
         ],
       },
     ],
