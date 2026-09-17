@@ -3575,6 +3575,33 @@
     b.subtitle(`${project.name} — ${project.location}`);
     b.spacer(6);
 
+    // Pulled live from whatever form already holds each fact (Kickoff/Bid Day Package, New
+    // Opportunity Form, PD/PO Coordination) rather than asked for again here — so this section
+    // is only ever as complete as those forms are, and never drifts out of sync with them.
+    const kickoff = project.kickoffPackage || {};
+    const opp = project.opportunity || {};
+    const pdpoFields = getPdPoCoordination(project).fields;
+    const address = kickoff.projectAddress || [opp.jobsiteAddress, opp.jobsiteCityStateZip].filter(Boolean).join(", ");
+    const levelBidDate = kickoff.bidDayDate ? formatDate(new Date(kickoff.bidDayDate + "T00:00:00")) : "";
+    const bidDueDate = kickoff.subBidsDueDate ? formatDate(new Date(kickoff.subBidsDueDate + "T00:00:00")) :
+      (project.bidDueDate ? formatDate(new Date(project.bidDueDate + "T00:00:00")) : "");
+    const rfiDueDate = kickoff.rfiDueBy ? formatDate(new Date(kickoff.rfiDueBy + "T00:00:00")) : "";
+    const constructionStart = pdpoFields.constructionStart ? formatDate(new Date(pdpoFields.constructionStart + "T00:00:00")) : "";
+    const constructionEnd = pdpoFields.constructionEnd ? formatDate(new Date(pdpoFields.constructionEnd + "T00:00:00")) : "";
+
+    b.sectionBar("Project Details");
+    b.twoCol("Address", address || "—", "Architect", kickoff.architect || opp.architectCo || "—");
+    b.twoCol(
+      "Level Day / Bid Day", levelBidDate ? [levelBidDate, kickoff.bidDayTime].filter(Boolean).join(" ") : "—",
+      "Bid Due", bidDueDate ? [bidDueDate, kickoff.subBidsDueTime].filter(Boolean).join(" ") : "—"
+    );
+    b.twoCol(
+      "RFIs Due", rfiDueDate || "—",
+      "Square Footage", opp.projectSqFt ? Number(opp.projectSqFt).toLocaleString() + " SF" : "—"
+    );
+    b.twoCol("Construction Start", constructionStart || "—", "Final Completion", constructionEnd || "—");
+    b.spacer(10);
+
     LEVELING_TRADE_GROUPS.forEach((group) => {
       b.sectionBar(`${group.name}   ·   Captain: ${la.captains[group.name] || "—"}`);
       b.tableHeaderRow(["BP#", "Trade", "Leveler", "Confirmed Bidders", "Trusted Subs"], colXs);
