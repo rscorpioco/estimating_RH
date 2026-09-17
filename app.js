@@ -901,6 +901,39 @@
     });
   }
 
+  // Finds a roster person's email by name — Levelers/Captains (Level Assignments) and PM/FM
+  // (PD/PO Coordination's Scorpio Team) are stored as plain name strings, so this is how their
+  // email gets resolved for an invite. Returns null (silently dropped by getScheduleRecipients)
+  // for a name that isn't in this project's roster — e.g. someone added by free text via "+ Add
+  // someone new…" without an email on file yet.
+  function findRosterEmail(project, name) {
+    if (!name) return null;
+    const person = getAssignablePeople(project).find((p) => p.name === name);
+    return (person && person.email) || null;
+  }
+
+  // Who a given schedule rule's invite/email goes to, per Rachel's standing instruction:
+  // Leadership and the project's PM/FM go on every single one; the 6S team (this project's
+  // Levelers/Captains) only goes on the rules marked include6sTeam — Kickoff plus the other
+  // meetings that are actually about sub/trade coverage, not every internal precon review.
+  function getScheduleRecipients(project, rule) {
+    const emails = new Set();
+    LEADERSHIP_ROSTER.forEach((person) => { if (person.email) emails.add(person.email); });
+    const pdpoTeam = getPdPoCoordination(project).team;
+    const pmEmail = findRosterEmail(project, pdpoTeam.pm);
+    const fmEmail = findRosterEmail(project, pdpoTeam.fm);
+    if (pmEmail) emails.add(pmEmail);
+    if (fmEmail) emails.add(fmEmail);
+    if (rule.include6sTeam) {
+      getLevelTeam(project).forEach((person) => {
+        const email = findRosterEmail(project, person.name);
+        if (email) emails.add(email);
+      });
+    }
+    if (rule.to) rule.to.forEach((email) => emails.add(email));
+    return [...emails];
+  }
+
   // Builds an Outlook Web "compose event" deep link, pre-filled with subject/date/time/body.
   // This opens Outlook in a new tab with the invite ready to review — nothing is sent until
   // the user clicks Send there. A static page can't complete a real Graph/OAuth sign-in on its
@@ -938,7 +971,8 @@
       allday,
       body: rule.note || "",
     });
-    if (rule.to && rule.to.length) params.set("to", rule.to.join(";"));
+    const recipients = getScheduleRecipients(project, rule);
+    if (recipients.length) params.set("to", recipients.join(";"));
 
     return "https://outlook.office.com/calendar/0/deeplink/compose?" + params.toString();
   }
@@ -955,7 +989,8 @@
       subject: `${project.name} - ${action}`,
       body: bodyParts.filter(Boolean).join("\n\n"),
     });
-    if (rule.to && rule.to.length) params.set("to", rule.to.join(";"));
+    const recipients = getScheduleRecipients(project, rule);
+    if (recipients.length) params.set("to", recipients.join(";"));
     return "https://outlook.office.com/mail/deeplink/compose?" + params.toString();
   }
 

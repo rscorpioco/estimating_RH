@@ -287,6 +287,14 @@ const TEAM_LEAD_OPTIONS = ["Kevin Bradford", "Ken Brown", "Blake Honerbrink", "C
 // `action` is a short, clean process description with no "Calendar Invite:"/"E-mail"
 // boilerplate — used (as "Project Name - Action") for the actual Outlook event/message subject,
 // since the boilerplate reads fine in this app's own table but not as an email/invite title.
+//
+// Recipients (computed live by getScheduleRecipients in app.js, not stored here per-rule):
+// Leadership (LEADERSHIP_ROSTER below) and the project's assigned PM/FM (from PD/PO
+// Coordination's Scorpio Team section) go on every invite/email. The 6S team (from Level
+// Assignments' Levelers/Captains) only goes on the rules below marked `include6sTeam: true` —
+// Kickoff plus the other meetings/emails that are actually about sub/trade coverage, not every
+// internal precon review. `to` (a fixed array, used on scheduleLogisticsPlan for Aaron Rogers)
+// is a hardcoded add beyond those, for a recipient who isn't on any project roster.
 const SCHEDULE_RULES = [
   {
     id: "pdpoDeliverableDue",
@@ -318,6 +326,7 @@ const SCHEDULE_RULES = [
     offsetDays: 3,
     time: "15:30",
     type: "external",
+    include6sTeam: true,
     note: "Invite the 6S team and Project team",
   },
   {
@@ -373,6 +382,7 @@ const SCHEDULE_RULES = [
     time: null,
     allDay: true,
     type: "external",
+    include6sTeam: true,
     note: "Level Day for CMAR, Bid Day for Hard Bid — plus lunch; email ATF and Lead",
   },
 
@@ -386,6 +396,7 @@ const SCHEDULE_RULES = [
     action: "6S Leveling",
     anchor: null,
     type: "external",
+    include6sTeam: true,
     actions: ["email"],
     emailSubject: "6S Level Assignments",
     note: "Send the current 6S Level Assignments to whoever needs the trade/leveler coverage.",
@@ -455,6 +466,7 @@ const SCHEDULE_RULES = [
     anchor: null,
     type: "external",
     condition: "CM",
+    include6sTeam: true,
     actions: ["email"],
     emailSubject: "Bid List",
     note: "Share the Bid List with the project team.",
@@ -468,6 +480,7 @@ const SCHEDULE_RULES = [
     time: null,
     allDay: true,
     type: "external",
+    include6sTeam: true,
     actions: ["calendar", "email"],
     emailSubject: "Constructability Review",
     note: "2 weeks before sub bids are due — e-mail the project team and put the meeting on the calendar.",
@@ -479,6 +492,7 @@ const SCHEDULE_RULES = [
     anchor: "bidDue",
     offsetDays: -14,
     type: "external",
+    include6sTeam: true,
     actions: ["email"],
     emailSubject: "Sub Bidding Status",
     note: "2 weeks before sub bids are due.",
@@ -504,6 +518,7 @@ const SCHEDULE_RULES = [
     time: null,
     allDay: true,
     type: "external",
+    include6sTeam: true,
     note: "4 weeks before sub bids are due.",
   },
   {
@@ -559,6 +574,7 @@ const SCHEDULE_RULES = [
     time: null,
     allDay: true,
     type: "external",
+    include6sTeam: true,
     note: "A week before sub bids are due.",
   },
   {
@@ -990,9 +1006,18 @@ const PDPO_FIELDS = [
 
 const PDPO_TEAM_ROLES = [
   { id: "pc", label: "PC" },
+  { id: "pm", label: "PM — Project Manager" },
   { id: "po", label: "PO — Project Operations" },
-  { id: "fm", label: "FM" },
+  { id: "fm", label: "FM — Field Manager" },
   { id: "pd", label: "PD — Project Development" },
+];
+
+// Company-wide Leadership — invited/CC'd on every meeting and email the Meeting & Task
+// Schedule generates (per Rachel's ask: "Leadership should be invited to all"), regardless of
+// project or office. Edit this list directly as Leadership changes; it isn't tied to any one
+// project's roster the way PM/FM/6S team recipients below are.
+const LEADERSHIP_ROSTER = [
+  // { name: "Full Name", email: "name@scorpioco.com" },
 ];
 
 // ---------- PD/PO Design Milestones ----------
