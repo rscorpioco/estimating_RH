@@ -528,8 +528,17 @@
     return new Date().toISOString().slice(0, 10);
   }
 
+  // The Done phase's due date normally falls back to the fixed Day-21+ offset like every other
+  // phase, but once the GMP Deliverable date is set (the Construction Documents row's Precon
+  // Deliverable Return Date, in PD/PO Coordination's Design Milestones — the same date the
+  // "Deliverable Due" calendar invite anchors to) that real date drives the badge instead, since
+  // it's the actual deadline rather than an estimate from Activate Date.
   function phaseDueStatus(project, phase) {
-    const dueDate = addDays(project.activateDate, phase.dueOffsetDays);
+    let dueDate = addDays(project.activateDate, phase.dueOffsetDays);
+    if (phase.id === "done") {
+      const gmpDeliverableDate = getScheduleAnchorDate(project, "pdpoDeliverable");
+      if (gmpDeliverableDate) dueDate = addDays(gmpDeliverableDate, 0);
+    }
     const checkedCount = countPhaseChecked(phase, project.checked || {}, project);
     const total = countPhaseItems(phase, project);
     const complete = total > 0 && checkedCount === total;
@@ -869,6 +878,7 @@
       const cd = findDesignMilestone(project, "cd");
       return (cd && cd.designScheduleDate) || "";
     }
+    if (anchor === "rfiDue") return getPdPoAdvertisement(project).rfiDueDate || "";
     return "";
   }
 
@@ -878,6 +888,7 @@
     if (rule.anchor === "levelApproved") return "— set the Level Assignments Approved Date to compute (in 6S Level Assignments)";
     if (rule.anchor === "pdpoDeliverable") return "— set the Construction Documents row's Precon Deliverable Return Date to compute (in PD/PO Coordination)";
     if (rule.anchor === "pdpoCdSchedule") return "— set the Construction Documents row's Design Schedule Date to compute (in PD/PO Coordination)";
+    if (rule.anchor === "rfiDue") return "— set the RFIs Due Date to compute (in PD/PO Coordination's Advertisement section)";
     if (rule.anchor === "activate") return "— missing Activate Date";
     // No anchor at all — either it's a send-anytime action with no fixed date (email-only rules)
     // or it depends on something the app can't compute (e.g. a site visit date from the ITB).
@@ -1995,6 +2006,33 @@
     return wrap;
   }
 
+  // Which phase the project is actually sitting in right now — a quick status flag Rachel sets
+  // and updates by hand, separate from the dated Design Milestones rows below (Permit Set isn't
+  // one of those rows, since it doesn't carry its own % of design/schedule/return date).
+  function renderCurrentMilestoneField(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "nof-field pdpo-current-milestone";
+
+    const label = document.createElement("label");
+    const labelText = document.createElement("span");
+    labelText.textContent = "Currently Working On";
+    label.appendChild(labelText);
+
+    const select = document.createElement("select");
+    select.add(new Option("— Select —", ""));
+    PDPO_CURRENT_MILESTONE_OPTIONS.forEach((m) => select.add(new Option(m, m)));
+    const pdpo = getPdPoCoordination(project);
+    select.value = pdpo.currentMilestone || "";
+    select.addEventListener("change", () => {
+      pdpo.currentMilestone = select.value;
+      saveState();
+    });
+
+    label.appendChild(select);
+    wrap.appendChild(label);
+    return wrap;
+  }
+
   function renderDesignMilestonesSection(project) {
     const wrap = document.createElement("div");
     wrap.className = "pdpo-design-milestones";
@@ -2008,6 +2046,8 @@
     note.className = "pdpo-linked-note";
     note.textContent = "The Construction Documents row drives the Deliverable Due and Advertisement calendar invites (Deliverable Due Return Date, and 30 days after Design Schedule Date).";
     wrap.appendChild(note);
+
+    wrap.appendChild(renderCurrentMilestoneField(project));
 
     const table = document.createElement("table");
     table.className = "design-milestones-table";
@@ -2388,6 +2428,8 @@
     b.spacer(10);
 
     b.sectionBar("Design Milestones");
+    b.fieldLine("Currently Working On", data.currentMilestone || "—", 200);
+    b.spacer(4);
     b.tableHeaderRow(["Milestone", "% Design", "Design Sched.", "Precon Return"], [0, 200, 280, 400]);
     getDesignMilestones(project).forEach((row) => {
       b.tableRow([

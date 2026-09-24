@@ -295,6 +295,11 @@ const TEAM_LEAD_OPTIONS = ["Kevin Bradford", "Ken Brown", "Blake Honerbrink", "C
 // Kickoff plus the other meetings/emails that are actually about sub/trade coverage, not every
 // internal precon review. `to` (a fixed array, used on scheduleLogisticsPlan for Aaron Rogers)
 // is a hardcoded add beyond those, for a recipient who isn't on any project roster.
+//
+// `anchor: "rfiDue"` reads the RFIs Due Date set in PD/PO Coordination's Advertisement section
+// (getPdPoAdvertisement) — matches a real project's "GMP Pre-Bid RFIs" date. "pdpoDeliverable"
+// (the "Deliverable Due" rule below) is what a real schedule calls the "GMP Deliverable" date —
+// same anchor also drives the Done phase's due-date badge once it's set (see phaseDueStatus).
 const SCHEDULE_RULES = [
   {
     id: "pdpoDeliverableDue",
@@ -533,15 +538,37 @@ const SCHEDULE_RULES = [
     note: "2 weeks before sub bids are due.",
   },
   {
+    id: "rfiDeadlineReminder",
+    label: "Email: RFI Deadline Reminder",
+    action: "RFI Deadline Reminder",
+    anchor: "rfiDue",
+    offsetDays: -2,
+    type: "external",
+    actions: ["email"],
+    emailSubject: "RFI Deadline Reminder",
+    note: "2 days before the RFIs Due Date (set in PD/PO Coordination's Advertisement section) — reminder to get subcontractor RFIs in.",
+  },
+  {
+    id: "architectRfiResponse",
+    label: "Calendar Invite: Architect's Response to RFIs",
+    action: "Architect's Response to RFIs",
+    anchor: "rfiDue",
+    offsetDays: 4,
+    time: null,
+    allDay: true,
+    type: "external",
+    note: "4 days after RFIs Due Date, matching the typical Pre-Bid RFIs → Response to RFIs turnaround.",
+  },
+  {
     id: "discoveryStatus",
     label: "Calendar Invite: Discovery Status Updated (subcontractor coverage, scope, etc.)",
     action: "Discovery Status Updated",
-    anchor: "bidDue",
-    offsetDays: -14,
+    anchor: "rfiDue",
+    offsetDays: 0,
     time: null,
     allDay: true,
     type: "self",
-    note: "2 weeks before sub bids are due.",
+    note: "Same day as the RFIs Due Date — once RFIs are in, discovery status/scope coverage gets updated.",
   },
   {
     id: "firstPassEstimate",
@@ -567,8 +594,8 @@ const SCHEDULE_RULES = [
   },
   {
     id: "bidManualIssued",
-    label: "Calendar Invite: Bid Manual Issued / 6S Scopes Due / Level Sheets",
-    action: "Bid Manual Issued / 6S Scopes Due / Level Sheets",
+    label: "Calendar Invite: Bid Manual Issued / 6S Scopes Due",
+    action: "Bid Manual Issued / 6S Scopes Due",
     anchor: "bidDue",
     offsetDays: -7,
     time: null,
@@ -576,6 +603,29 @@ const SCHEDULE_RULES = [
     type: "external",
     include6sTeam: true,
     note: "A week before sub bids are due.",
+  },
+  {
+    id: "levelSheetsDue",
+    label: "Calendar Invite: Level Sheets Due",
+    action: "Level Sheets Due",
+    anchor: "bidDue",
+    offsetDays: -3,
+    time: null,
+    allDay: true,
+    type: "external",
+    include6sTeam: true,
+    note: "3 days before sub bids are due.",
+  },
+  {
+    id: "estimateDue",
+    label: "Calendar Invite: Estimate Due",
+    action: "Estimate Due",
+    anchor: "bidDue",
+    offsetDays: -3,
+    time: null,
+    allDay: true,
+    type: "external",
+    note: "3 days before sub bids are due.",
   },
   {
     id: "subBidsGutCheck",
@@ -658,16 +708,20 @@ const SCHEDULE_RULE_ORDER = {
   constructabilityReview: 17,
   email6sSubBidStatus: 18,
   rfiLog1: 19,
-  discoveryStatus: 20,
-  firstPassEstimate: 21,
-  preconInternalReview: 22,
-  bidManualIssued: 23,
-  bidLevelDay: 24,
-  subBidsGutCheck: 25,
-  staffGcFinalReview: 26,
-  internalReview: 27,
-  architectClientReview: 28,
-  clientTeamReview: 29,
+  rfiDeadlineReminder: 20,
+  architectRfiResponse: 21,
+  discoveryStatus: 22,
+  firstPassEstimate: 23,
+  preconInternalReview: 24,
+  bidManualIssued: 25,
+  levelSheetsDue: 26,
+  estimateDue: 27,
+  bidLevelDay: 28,
+  subBidsGutCheck: 29,
+  staffGcFinalReview: 30,
+  internalReview: 31,
+  architectClientReview: 32,
+  clientTeamReview: 33,
 };
 
 // ---------- Kickoff / Bid Day Package ----------
@@ -1035,6 +1089,13 @@ const PDPO_DESIGN_MILESTONE_DEFAULTS = [
   { id: "dd", name: "Design Development", percentDesign: "", designScheduleDate: "", preconReturnDate: "" },
   { id: "cd", name: "Construction Documents", percentDesign: "", designScheduleDate: "", preconReturnDate: "" },
 ];
+
+// A separate "what phase is this project actually in right now" flag — distinct from the dated
+// rows above (which track when each stage happened/is due), this is just a quick at-a-glance
+// status Rachel sets and updates by hand as the project moves through design. Permit Set isn't
+// one of the dated milestone rows (it doesn't have its own % of design/schedule/return date the
+// way the other 4 do) but is a real phase a project can be sitting in, so it's included here.
+const PDPO_CURRENT_MILESTONE_OPTIONS = ["Conceptual", "Schematic Design", "Design Development", "Construction Documents", "Permit Set"];
 
 // ---------- PD/PO Advertisement ----------
 // Mirrors Scorpio's "Advertisement for Bid" document (project scope blurb, RFI/Bid due dates,

@@ -1025,6 +1025,11 @@ dialog.pdpo-dialog {
   min-width: 380px;
 }
 
+.pdpo-current-milestone {
+  max-width: 260px;
+  margin-bottom: 12px;
+}
+
 .pdpo-advertisement {
   flex: 1;
   min-width: 220px;
