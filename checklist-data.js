@@ -542,11 +542,11 @@ const SCHEDULE_RULES = [
     label: "Email: RFI Deadline Reminder",
     action: "RFI Deadline Reminder",
     anchor: "rfiDue",
-    offsetDays: -2,
+    offsetDays: 0,
     type: "external",
     actions: ["email"],
     emailSubject: "RFI Deadline Reminder",
-    note: "2 days before the RFIs Due Date (set in PD/PO Coordination's Advertisement section) — reminder to get subcontractor RFIs in.",
+    note: "Same day as the RFIs Due Date (set in PD/PO Coordination's Advertisement section), matching the milestone schedule.",
   },
   {
     id: "architectRfiResponse",
