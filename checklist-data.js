@@ -1123,16 +1123,20 @@ const BOND_FIELDS = [
 // dropdown, and the "Extension Endorsement Request" section is left off entirely since it only
 // applies to an already-bound policy, not an initial quote request.
 const BUILDERS_RISK_YES_NO = NOF_YES_NO;
+// Insured Information is Scorpio's own company info (the GC is the "insured" on every Builder's
+// Risk request regardless of project or office) — the same on every project per Rachel, so it's
+// defaulted here rather than retyped each time. Still editable per project if it's ever needed.
+// insuredName reuses BOND_REQUESTOR_NAME since it's the same Scorpio entity on both forms.
 const BUILDERS_RISK_FIELDS = [
   // Insured Information
-  { id: "insuredName", label: "Insured Name", type: "text", section: "Insured Information" },
-  { id: "insuredEmail", label: "Email Address", type: "text", section: "Insured Information" },
-  { id: "insuredPhone", label: "Phone #", type: "text", section: "Insured Information" },
+  { id: "insuredName", label: "Insured Name", type: "text", defaultValue: BOND_REQUESTOR_NAME, section: "Insured Information" },
+  { id: "insuredEmail", label: "Email Address", type: "text", defaultValue: "rachel@scorpioco.com", section: "Insured Information" },
+  { id: "insuredPhone", label: "Phone #", type: "text", defaultValue: "352-872-5638", section: "Insured Information" },
   { id: "insuredFax", label: "Fax #", type: "text", section: "Insured Information" },
-  { id: "insuredAddress", label: "Insured's Address", type: "text", section: "Insured Information" },
-  { id: "insuredCity", label: "City", type: "text", section: "Insured Information" },
+  { id: "insuredAddress", label: "Insured's Address", type: "text", defaultValue: "3911 W. Newberry Rd", section: "Insured Information" },
+  { id: "insuredCity", label: "City", type: "text", defaultValue: "Gainesville", section: "Insured Information" },
   { id: "insuredState", label: "State", type: "text", defaultValue: "FL", section: "Insured Information" },
-  { id: "insuredZip", label: "ZIP Code", type: "text", section: "Insured Information" },
+  { id: "insuredZip", label: "ZIP Code", type: "text", defaultValue: "32607", section: "Insured Information" },
   { id: "businessType", label: "Business Type", type: "select", options: ["Corporation", "LLC", "Individual", "Partnership", "Joint Venture", "Other"], defaultValue: "Corporation", section: "Insured Information" },
   { id: "namedInsuredDescription", label: "Description of the Named Insured", type: "select", options: ["Owner", "Contractor", "Owner/Contractor"], defaultValue: "Contractor", section: "Insured Information" },
 

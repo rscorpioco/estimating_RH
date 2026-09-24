@@ -2996,17 +2996,12 @@
   // Insured Name/Address/City/etc. default to Scorpio's own info, not the project owner's — on
   // a real Builder's Risk application Scorpio is the named insured as Contractor (see
   // namedInsuredDescription's "Contractor" default), the same as Bond Request's
-  // BOND_REQUESTOR_NAME. Only the project-specific fields (address, sq ft, value, dates) pull
-  // from the New Opportunity Form.
+  // BOND_REQUESTOR_NAME — set via each field's defaultValue in BUILDERS_RISK_FIELDS (below,
+  // in the forEach) rather than hardcoded here, so there's one place to update it. Only the
+  // project-specific fields (address, sq ft, value, dates) pull from the New Opportunity Form.
   function applyBuildersRiskDefaults(project) {
     const data = getBuildersRisk(project);
     const opp = project.opportunity || {};
-    if (data.insuredName === undefined) data.insuredName = BOND_REQUESTOR_NAME;
-    if (data.insuredEmail === undefined) data.insuredEmail = "rachel@scorpioco.com";
-    if (data.insuredPhone === undefined) data.insuredPhone = "352-872-5638";
-    if (data.insuredAddress === undefined) data.insuredAddress = "3911 W. Newberry Rd";
-    if (data.insuredCity === undefined) data.insuredCity = "Gainesville";
-    if (data.insuredZip === undefined) data.insuredZip = "32607";
     if (data.projectAddress === undefined) data.projectAddress = opp.jobsiteAddress || "";
     if (data.squareFootage === undefined) data.squareFootage = opp.projectSqFt || "";
     if (data.totalCompletedValue === undefined) data.totalCompletedValue = opp.estProjectValue || "";
