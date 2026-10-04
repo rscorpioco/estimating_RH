@@ -867,6 +867,32 @@ const LEVELING_TRADE_GROUPS = [
   ]},
 ];
 
+// Discipline groups for the RFI Log (see the "Keep the RFI log current" Discovery checklist
+// item) — transcribed from Rachel's real RFI tracking set-up. Kept as its own list rather than
+// reused from LEVELING_TRADE_GROUPS above: the two group trades for different purposes (bid
+// packages vs. RFI discipline) and don't line up one-to-one — e.g. "Laboratory Equipment" here
+// has no BP# counterpart in the Leveling Assignments workbook.
+const RFI_CATEGORIES = [
+  { name: "Site", disciplines: [
+    "Site Demolition", "Hazardous Abatement", "Earthwork", "Utilities", "Fuel Tank", "Pavement/Markings", "Site Concrete",
+  ]},
+  { name: "Structure", disciplines: [
+    "PEMB", "Pre-Engineered Metal Trusses", "Wood Trusses", "Concrete", "Tilt Wall", "Masonry", "Brick", "Structural Steel", "Misc Metals",
+  ]},
+  { name: "System", disciplines: [
+    "Fire Protection", "Plumbing", "HVAC", "Solar", "Electrical", "Lightning Protection", "Generator", "Grounding", "Fire Alarm", "Telecommunication", "Electronic", "Security",
+  ]},
+  { name: "Skin", disciplines: [
+    "Waterproofing", "Dampproofing", "Sealants", "Insulation", "Fireproofing", "Roofing", "Metal Panels", "Doors", "Frames", "Hardware", "Storefront", "Glazing", "Glass", "Overhead Doors", "Drywall", "Studs", "Stucco", "EIFS", "Plaster",
+  ]},
+  { name: "Surfaces", disciplines: [
+    "Casework", "Countertops", "Millwork", "Acoustical Ceiling Treatment", "Flooring", "Tile", "Resilient", "Painting", "Wallcovering", "Resinous Flooring", "Fluid Applied", "Epoxy", "Sealed Concrete",
+  ]},
+  { name: "Specialties", disciplines: [
+    "Toilet Accessories", "FE/C", "Wall Protection", "Visual Display Boards", "Canopies", "Elevators", "Commercial Equipment", "Laboratory Equipment",
+  ]},
+];
+
 // Starting values for the editable Team Roster (state.teamRoster) — transcribed from the
 // "Precon"/office roster rows at the bottom of each tab of Scorpio's real Leveling
 // Assignments workbook. Precon is company-wide (assigned on every project regardless of

@@ -77,6 +77,11 @@
   const sixsFeedbackBody = document.getElementById("sixsFeedbackBody");
   const sixsFeedbackProgress = document.getElementById("sixsFeedbackProgress");
 
+  const rfiLogDialog = document.getElementById("rfiLogDialog");
+  const rfiLogProjectName = document.getElementById("rfiLogProjectName");
+  const rfiLogBody = document.getElementById("rfiLogBody");
+  const rfiLogProgress = document.getElementById("rfiLogProgress");
+
   const miniDialog = document.getElementById("miniDialog");
   const miniDialogForm = document.getElementById("miniDialogForm");
   const miniDialogMessage = document.getElementById("miniDialogMessage");
@@ -129,6 +134,7 @@
   let bondProjectId = null;
   let buildersRiskProjectId = null;
   let sixsFeedbackProjectId = null;
+  let rfiLogProjectId = null;
   // The Kickoff Package's rendered page thumbnails, each page's tagged category, and the parsed
   // pdf.js document (kept around so the zoom view can re-render any page on demand) — generated
   // from the central Drawings upload below, held in memory only (not persisted to localStorage
@@ -266,7 +272,7 @@
   // any other already-open dialog — without this, opening a second one stacks on top of the
   // first, and closing the top one leaves the other sitting there looking "stuck" open.
   function closeAllDialogs(except) {
-    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog, pdpoDialog, preconDialog, bondDialog, buildersRiskDialog, sixsFeedbackDialog].forEach((d) => {
+    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog, pdpoDialog, preconDialog, bondDialog, buildersRiskDialog, sixsFeedbackDialog, rfiLogDialog].forEach((d) => {
       if (d && d !== except && d.open) d.close();
     });
   }
@@ -366,6 +372,14 @@
     document.getElementById("closeSixsFeedbackBtn").addEventListener("click", () => sixsFeedbackDialog.close());
     document.getElementById("exportSixsFeedbackBtn").addEventListener("click", handleExportSixsFeedback);
     sixsFeedbackDialog.addEventListener("close", () => {
+      renderProjectList();
+      renderActiveProject();
+    });
+
+    document.getElementById("closeRfiLogBtn").addEventListener("click", () => rfiLogDialog.close());
+    document.getElementById("exportRfiLogCsvBtn").addEventListener("click", handleExportRfiLogCsv);
+    document.getElementById("exportRfiLogPdfBtn").addEventListener("click", handleExportRfiLogPdf);
+    rfiLogDialog.addEventListener("close", () => {
       renderProjectList();
       renderActiveProject();
     });
@@ -855,6 +869,10 @@
 
     if (item.id === "done-postbid") {
       wrap.appendChild(renderSixsFeedbackAffordance(project));
+    }
+
+    if (item.id === "dis-rfilog") {
+      wrap.appendChild(renderRfiLogAffordance(project));
     }
 
     return wrap;
@@ -3883,6 +3901,383 @@
       b.wrappedBlock("What Went Well", entry.wentWell || "—");
       b.wrappedBlock("Could Be Improved", entry.improve || "—");
       b.spacer(8);
+    });
+
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: "application/pdf" });
+  }
+
+  // ---------- RFI Log ----------
+  // Grouped by Rachel's real RFI discipline categories (RFI_CATEGORIES), not the BP#/trade
+  // groups used for Leveling — those two taxonomies group trades for different purposes and
+  // don't line up one-to-one. Each entry mirrors the columns of Scorpio's real RFI tracking
+  // workbook, with the "Question" column split into 3 guided fields while editing (what/where
+  // the problem is, what information is missing, what's needed) and rejoined into one string on
+  // export to match that single-column layout.
+
+  function getRfiLog(project) {
+    project.rfiLog = project.rfiLog || { entries: [] };
+    project.rfiLog.entries = project.rfiLog.entries || [];
+    return project.rfiLog;
+  }
+
+  function getRfiEntriesByCategory(project, categoryName) {
+    return getRfiLog(project).entries.filter((e) => e.category === categoryName);
+  }
+
+  function addRfiEntry(project, category) {
+    const log = getRfiLog(project);
+    log.entries.push({
+      id: "rfi_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7),
+      category: category.name,
+      discipline: "",
+      raisedBy: "",
+      dateSent: "",
+      specSheet: "",
+      problem: "",
+      missingInfo: "",
+      needed: "",
+      response: "",
+      respondingParty: "",
+      dateAnswered: "",
+    });
+    saveState();
+    renderRfiLogCategorySectionInPlace(project, category);
+    updateRfiLogProgressLabel(project);
+  }
+
+  async function removeRfiEntry(project, category, entryId) {
+    const ok = await miniConfirm("Remove this RFI entry? This can't be undone.", { okLabel: "Remove", danger: true });
+    if (!ok) return;
+    const log = getRfiLog(project);
+    const idx = log.entries.findIndex((e) => e.id === entryId);
+    if (idx >= 0) log.entries.splice(idx, 1);
+    saveState();
+    renderRfiLogCategorySectionInPlace(project, category);
+    updateRfiLogProgressLabel(project);
+  }
+
+  // An RFI counts as answered once there's a response or a date answered — matches how Rachel's
+  // template is actually used (a blank Response/Date Answered means it's still outstanding).
+  function countRfiLogStats(project) {
+    const entries = getRfiLog(project).entries;
+    const total = entries.length;
+    const answered = entries.filter((e) => (e.response || "").trim() || (e.dateAnswered || "").trim()).length;
+    return { total, answered, open: total - answered };
+  }
+
+  function renderRfiLogAffordance(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "item-inline-actions";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm";
+    btn.textContent = "Open RFI Log";
+    btn.addEventListener("click", () => openRfiLogDialog(project));
+
+    const { total, open } = countRfiLogStats(project);
+    const hint = document.createElement("span");
+    hint.className = "nof-progress-inline";
+    hint.textContent = total > 0 ? `${total} RFI${total === 1 ? "" : "s"} logged, ${open} open` : "No RFIs logged yet";
+
+    wrap.appendChild(btn);
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function openRfiLogDialog(project) {
+    closeAllDialogs(rfiLogDialog);
+    rfiLogProjectId = project.id;
+    rfiLogProjectName.textContent = `${project.name} — ${project.location}`;
+    renderRfiLogBody(project);
+    updateRfiLogProgressLabel(project);
+    rfiLogDialog.showModal();
+  }
+
+  function updateRfiLogProgressLabel(project) {
+    const { total, open, answered } = countRfiLogStats(project);
+    rfiLogProgress.textContent = total > 0
+      ? `${total} RFI${total === 1 ? "" : "s"} — ${open} open, ${answered} answered`
+      : "No RFIs logged yet";
+  }
+
+  function renderRfiLogBody(project) {
+    rfiLogBody.innerHTML = "";
+
+    const note = document.createElement("p");
+    note.className = "pdpo-linked-note";
+    note.textContent = "Grouped by Site / Structure / System / Skin / Surfaces / Specialties, matching Scorpio's RFI " +
+      "tracking set-up. Export .csv to open directly in Excel, or Export .pdf for a formatted copy.";
+    rfiLogBody.appendChild(note);
+
+    RFI_CATEGORIES.forEach((category) => {
+      rfiLogBody.appendChild(renderRfiLogCategorySection(project, category));
+    });
+  }
+
+  function renderRfiLogCategorySection(project, category) {
+    const wrap = document.createElement("div");
+    wrap.className = "rfi-category-section";
+    wrap.dataset.category = category.name;
+
+    const entries = getRfiEntriesByCategory(project, category.name);
+
+    const header = document.createElement("div");
+    header.className = "nof-section-title";
+    header.textContent = `${category.name} (${entries.length})`;
+    wrap.appendChild(header);
+
+    if (entries.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "rfi-category-empty";
+      empty.textContent = "No RFIs logged in this category yet.";
+      wrap.appendChild(empty);
+    } else {
+      const list = document.createElement("div");
+      list.className = "rfi-entry-list";
+      entries.forEach((entry, idx) => list.appendChild(renderRfiEntryCard(project, category, entry, idx + 1)));
+      wrap.appendChild(list);
+    }
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "btn btn-sm rfi-add-btn";
+    addBtn.textContent = "+ Add RFI";
+    addBtn.addEventListener("click", () => addRfiEntry(project, category));
+    wrap.appendChild(addBtn);
+
+    return wrap;
+  }
+
+  // Swaps just the one category's section in place, rather than re-rendering the whole dialog
+  // body — same reasoning as renderLevelTeamSummaryInPlace (keeps focus/scroll stable mid-edit).
+  function renderRfiLogCategorySectionInPlace(project, category) {
+    const old = rfiLogBody.querySelector(`.rfi-category-section[data-category="${category.name}"]`);
+    const fresh = renderRfiLogCategorySection(project, category);
+    if (old) old.replaceWith(fresh);
+    else rfiLogBody.appendChild(fresh);
+  }
+
+  function renderRfiEntryCard(project, category, entry, seq) {
+    function textInputField(labelText, key, type) {
+      const wrap = document.createElement("label");
+      wrap.className = "nof-field";
+      const span = document.createElement("span");
+      span.textContent = labelText;
+      wrap.appendChild(span);
+      const input = document.createElement("input");
+      input.type = type || "text";
+      input.value = entry[key] || "";
+      input.addEventListener(type === "date" ? "change" : "input", () => {
+        entry[key] = input.value;
+        saveState();
+        if (type === "date" && (key === "dateAnswered")) updateRfiLogProgressLabel(project);
+      });
+      wrap.appendChild(input);
+      return wrap;
+    }
+    function textAreaField(labelText, key, extraClass) {
+      const wrap = document.createElement("label");
+      wrap.className = "nof-field" + (extraClass ? " " + extraClass : "");
+      const span = document.createElement("span");
+      span.textContent = labelText;
+      wrap.appendChild(span);
+      const textarea = document.createElement("textarea");
+      textarea.value = entry[key] || "";
+      textarea.addEventListener("input", () => {
+        entry[key] = textarea.value;
+        saveState();
+        if (key === "response") updateRfiLogProgressLabel(project);
+      });
+      wrap.appendChild(textarea);
+      return wrap;
+    }
+
+    const card = document.createElement("div");
+    card.className = "rfi-entry-card";
+
+    const header = document.createElement("div");
+    header.className = "rfi-entry-card-header";
+    const label = document.createElement("span");
+    label.className = "rfi-entry-number";
+    label.textContent = `RFI ${category.name.slice(0, 1).toUpperCase()}-${seq}`;
+    header.appendChild(label);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn btn-sm rfi-remove-btn";
+    removeBtn.textContent = "Remove";
+    removeBtn.addEventListener("click", () => removeRfiEntry(project, category, entry.id));
+    header.appendChild(removeBtn);
+    card.appendChild(header);
+
+    const grid = document.createElement("div");
+    grid.className = "rfi-entry-grid";
+
+    // Discipline: a free-text input backed by a datalist, so it can take a discipline not on
+    // the category's own list without being blocked.
+    const disciplineWrap = document.createElement("label");
+    disciplineWrap.className = "nof-field";
+    const disciplineSpan = document.createElement("span");
+    disciplineSpan.textContent = "Discipline";
+    disciplineWrap.appendChild(disciplineSpan);
+    const disciplineInput = document.createElement("input");
+    disciplineInput.type = "text";
+    const datalistId = `rfiDisciplines_${category.name}`;
+    disciplineInput.setAttribute("list", datalistId);
+    disciplineInput.value = entry.discipline || "";
+    disciplineInput.addEventListener("input", () => { entry.discipline = disciplineInput.value; saveState(); });
+    disciplineWrap.appendChild(disciplineInput);
+    const datalist = document.createElement("datalist");
+    datalist.id = datalistId;
+    category.disciplines.forEach((d) => datalist.appendChild(new Option(d, d)));
+    disciplineWrap.appendChild(datalist);
+    grid.appendChild(disciplineWrap);
+
+    // Raised By: the same project roster used for Leveler/Captain — 6S is who develops RFIs.
+    const raisedByWrap = document.createElement("label");
+    raisedByWrap.className = "nof-field";
+    const raisedBySpan = document.createElement("span");
+    raisedBySpan.textContent = "Raised By";
+    raisedByWrap.appendChild(raisedBySpan);
+    const raisedBySelect = document.createElement("select");
+    raisedBySelect.add(new Option("—", ""));
+    getAssignablePeople(project).forEach((p) => raisedBySelect.add(new Option(p.name, p.name)));
+    raisedBySelect.value = entry.raisedBy || "";
+    raisedBySelect.addEventListener("change", () => { entry.raisedBy = raisedBySelect.value; saveState(); });
+    raisedByWrap.appendChild(raisedBySelect);
+    grid.appendChild(raisedByWrap);
+
+    grid.appendChild(textInputField("Date Sent", "dateSent", "date"));
+    grid.appendChild(textInputField("Spec / Sheet Ref", "specSheet"));
+
+    card.appendChild(grid);
+
+    const qHeading = document.createElement("div");
+    qHeading.className = "rfi-question-heading";
+    qHeading.textContent = "Question";
+    card.appendChild(qHeading);
+
+    card.appendChild(textAreaField("1. What and where is the problem?", "problem", "rfi-question-field"));
+    card.appendChild(textAreaField("2. What information do you not have?", "missingInfo", "rfi-question-field"));
+    card.appendChild(textAreaField("3. What do you need?", "needed", "rfi-question-field"));
+
+    const responseGrid = document.createElement("div");
+    responseGrid.className = "rfi-entry-grid";
+    responseGrid.appendChild(textInputField("Responding Party", "respondingParty"));
+    responseGrid.appendChild(textInputField("Date Answered", "dateAnswered", "date"));
+    card.appendChild(responseGrid);
+    card.appendChild(textAreaField("Response", "response"));
+
+    return card;
+  }
+
+  function csvEscape(value) {
+    const s = String(value === undefined || value === null ? "" : value);
+    if (/[",\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  function buildRfiLogCsv(project) {
+    const rows = [["Category", "#", "Discipline", "Raised By", "Date Sent", "Spec/Sheet Ref", "Question", "Response", "Responding Party", "Date Answered"]];
+    RFI_CATEGORIES.forEach((category) => {
+      getRfiEntriesByCategory(project, category.name).forEach((entry, idx) => {
+        const question = [entry.problem, entry.missingInfo, entry.needed].filter((s) => s && s.trim()).join(" ");
+        rows.push([
+          category.name,
+          String(idx + 1),
+          entry.discipline || "",
+          entry.raisedBy || "",
+          entry.dateSent || "",
+          entry.specSheet || "",
+          question,
+          entry.response || "",
+          entry.respondingParty || "",
+          entry.dateAnswered || "",
+        ]);
+      });
+    });
+    return rows.map((r) => r.map(csvEscape).join(",")).join("\r\n");
+  }
+
+  async function handleExportRfiLogCsv() {
+    const project = state.projects.find((p) => p.id === rfiLogProjectId);
+    if (!project) return;
+
+    const exportBtn = document.getElementById("exportRfiLogCsvBtn");
+    const originalLabel = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = "Exporting…";
+    try {
+      const csv = buildRfiLogCsv(project);
+      const blob = new Blob([csv], { type: "text/csv" });
+      await offerDownload(`${sanitizeFilename(project.name)}_RFI_Log.csv`, blob);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = originalLabel;
+    }
+  }
+
+  async function handleExportRfiLogPdf() {
+    const project = state.projects.find((p) => p.id === rfiLogProjectId);
+    if (!project) return;
+
+    if (typeof PDFLib === "undefined") {
+      await miniAlert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
+      return;
+    }
+
+    const exportBtn = document.getElementById("exportRfiLogPdfBtn");
+    const originalLabel = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = "Exporting…";
+    try {
+      const blob = await buildRfiLogPdf(project);
+      await offerDownload(`${sanitizeFilename(project.name)}_RFI_Log.pdf`, blob);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = originalLabel;
+    }
+  }
+
+  async function buildRfiLogPdf(project) {
+    const { PDFDocument, StandardFonts } = PDFLib;
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const b = createPdfFormBuilder(doc, font, boldFont);
+
+    b.title("RFI Log");
+    b.subtitle(`${project.name} — ${project.location}`);
+    b.spacer(6);
+
+    const { total, open, answered } = countRfiLogStats(project);
+    b.fieldLine("Total RFIs", String(total), 120);
+    b.fieldLine("Open", String(open), 120);
+    b.fieldLine("Answered", String(answered), 120);
+    b.spacer(10);
+
+    RFI_CATEGORIES.forEach((category) => {
+      const entries = getRfiEntriesByCategory(project, category.name);
+      if (!entries.length) return;
+      b.sectionBar(category.name);
+      entries.forEach((entry, idx) => {
+        const question = [entry.problem, entry.missingInfo, entry.needed].filter((s) => s && s.trim()).join(" ");
+        b.fieldLine(`RFI ${category.name.slice(0, 1).toUpperCase()}-${idx + 1}`, entry.discipline || "—", 110);
+        b.twoCol(
+          "Raised By", entry.raisedBy || "—",
+          "Date Sent", entry.dateSent ? formatDate(new Date(entry.dateSent + "T00:00:00")) : "—"
+        );
+        b.twoCol(
+          "Spec/Sheet Ref", entry.specSheet || "—",
+          "Date Answered", entry.dateAnswered ? formatDate(new Date(entry.dateAnswered + "T00:00:00")) : "—"
+        );
+        b.wrappedBlock("Question", question || "—");
+        b.wrappedBlock("Response", entry.response || "—");
+        b.fieldLine("Responding Party", entry.respondingParty || "—", 150);
+        b.spacer(10);
+      });
     });
 
     const bytes = await doc.save();

@@ -1196,6 +1196,90 @@ dialog.pdpo-dialog {
   .sixs-feedback-grid { grid-template-columns: 1fr; }
 }
 
+/* RFI Log */
+
+dialog.rfi-log-dialog {
+  width: 820px;
+}
+
+.rfi-category-section {
+  margin-bottom: 22px;
+}
+
+.rfi-category-empty {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 10px 0;
+}
+
+.rfi-entry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.rfi-entry-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--bg);
+}
+
+.rfi-entry-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.rfi-entry-number {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.rfi-remove-btn {
+  font-size: 11px;
+  padding: 3px 8px;
+  color: var(--red);
+  border-color: var(--red);
+  white-space: nowrap;
+}
+
+.rfi-entry-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.rfi-question-heading {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin: 4px 0 8px;
+}
+
+.rfi-question-field {
+  margin-bottom: 8px;
+}
+
+.rfi-question-field textarea {
+  min-height: 42px;
+}
+
+.rfi-add-btn {
+  margin-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .rfi-entry-grid { grid-template-columns: 1fr; }
+}
+
 /* Team Members */
 
 dialog.team-dialog {

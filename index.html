@@ -198,6 +198,24 @@
   </div>
 </dialog>
 
+<dialog id="rfiLogDialog" class="nof-dialog rfi-log-dialog">
+  <div class="nof-header">
+    <div>
+      <h2>RFI Log</h2>
+      <p class="nof-sub" id="rfiLogProjectName"></p>
+    </div>
+    <button type="button" class="btn" id="closeRfiLogBtn" aria-label="Close">Close</button>
+  </div>
+  <div class="nof-body" id="rfiLogBody"></div>
+  <div class="nof-footer">
+    <span class="nof-progress" id="rfiLogProgress"></span>
+    <div class="nof-footer-actions">
+      <button type="button" class="btn" id="exportRfiLogCsvBtn">Export .csv</button>
+      <button type="button" class="btn" id="exportRfiLogPdfBtn">Export .pdf</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="kickoffZoomDialog" class="kickoff-zoom-dialog">
   <div class="kickoff-zoom-header">
     <span id="kickoffZoomPageLabel">Page 1</span>
