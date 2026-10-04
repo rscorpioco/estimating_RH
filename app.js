@@ -674,6 +674,7 @@
     const pdpo = countPdPoFieldsFilled(project);
     const level = countLevelCoverage(project);
     const kickoff = countKickoffProgress(project);
+    const rfiLog = countRfiLogStats(project);
     const levelOrBid = project.deliveryMethod === "Hard Bid" ? "Bid Day" : "Level Day";
     const unlocked = isPrimaryFormStarted(project);
 
@@ -694,6 +695,10 @@
     entries.push(
       { label: `Kickoff / ${levelOrBid} Package`, filled: kickoff.fieldsFilled, total: kickoff.fieldsTotal, onOpen: () => openKickoffDialog(project) },
       { label: "6S Level Assignments & Bid Packages", filled: level.assignedTrades, total: level.totalTrades, onOpen: () => openLevelDialog(project) },
+      // filled/total here means answered/total RFIs, not fields on a form — same "0/0 = not
+      // started yet" styling still reads right (nothing logged), and it nudges attention back
+      // to this card whenever RFIs are open but unanswered.
+      { label: "RFI Log", filled: rfiLog.answered, total: rfiLog.total, onOpen: () => openRfiLogDialog(project) },
     );
 
     if (unlocked) {
