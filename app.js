@@ -82,6 +82,11 @@
   const rfiLogBody = document.getElementById("rfiLogBody");
   const rfiLogProgress = document.getElementById("rfiLogProgress");
 
+  const qualificationsDialog = document.getElementById("qualificationsDialog");
+  const qualificationsProjectName = document.getElementById("qualificationsProjectName");
+  const qualificationsBody = document.getElementById("qualificationsBody");
+  const qualificationsProgress = document.getElementById("qualificationsProgress");
+
   const miniDialog = document.getElementById("miniDialog");
   const miniDialogForm = document.getElementById("miniDialogForm");
   const miniDialogMessage = document.getElementById("miniDialogMessage");
@@ -135,6 +140,7 @@
   let buildersRiskProjectId = null;
   let sixsFeedbackProjectId = null;
   let rfiLogProjectId = null;
+  let qualificationsProjectId = null;
   // The Kickoff Package's rendered page thumbnails, each page's tagged category, and the parsed
   // pdf.js document (kept around so the zoom view can re-render any page on demand) — generated
   // from the central Drawings upload below, held in memory only (not persisted to localStorage
@@ -272,7 +278,7 @@
   // any other already-open dialog — without this, opening a second one stacks on top of the
   // first, and closing the top one leaves the other sitting there looking "stuck" open.
   function closeAllDialogs(except) {
-    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog, pdpoDialog, preconDialog, bondDialog, buildersRiskDialog, sixsFeedbackDialog, rfiLogDialog].forEach((d) => {
+    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog, pdpoDialog, preconDialog, bondDialog, buildersRiskDialog, sixsFeedbackDialog, rfiLogDialog, qualificationsDialog].forEach((d) => {
       if (d && d !== except && d.open) d.close();
     });
   }
@@ -380,6 +386,14 @@
     document.getElementById("exportRfiLogCsvBtn").addEventListener("click", handleExportRfiLogCsv);
     document.getElementById("exportRfiLogPdfBtn").addEventListener("click", handleExportRfiLogPdf);
     rfiLogDialog.addEventListener("close", () => {
+      renderProjectList();
+      renderActiveProject();
+    });
+
+    document.getElementById("closeQualificationsBtn").addEventListener("click", () => qualificationsDialog.close());
+    document.getElementById("copyQualificationsBtn").addEventListener("click", handleCopyQualifications);
+    document.getElementById("exportQualificationsBtn").addEventListener("click", handleExportQualificationsPdf);
+    qualificationsDialog.addEventListener("close", () => {
       renderProjectList();
       renderActiveProject();
     });
@@ -675,6 +689,7 @@
     const level = countLevelCoverage(project);
     const kickoff = countKickoffProgress(project);
     const rfiLog = countRfiLogStats(project);
+    const qualifications = countQualificationsStats(project);
     const levelOrBid = project.deliveryMethod === "Hard Bid" ? "Bid Day" : "Level Day";
     const unlocked = isPrimaryFormStarted(project);
 
@@ -699,6 +714,7 @@
       // started yet" styling still reads right (nothing logged), and it nudges attention back
       // to this card whenever RFIs are open but unanswered.
       { label: "RFI Log", filled: rfiLog.answered, total: rfiLog.total, onOpen: () => openRfiLogDialog(project) },
+      { label: "Qualifications & Assumptions", filled: qualifications.filled, total: qualifications.total, onOpen: () => openQualificationsDialog(project) },
     );
 
     if (unlocked) {
@@ -878,6 +894,10 @@
 
     if (item.id === "dis-rfilog") {
       wrap.appendChild(renderRfiLogAffordance(project));
+    }
+
+    if (item.id === "det-qualassumptions") {
+      wrap.appendChild(renderQualificationsAffordance(project));
     }
 
     return wrap;
@@ -4283,6 +4303,273 @@
         b.fieldLine("Responding Party", entry.respondingParty || "—", 150);
         b.spacer(10);
       });
+    });
+
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: "application/pdf" });
+  }
+
+  // ---------- Qualifications & Assumptions ----------
+  // A flat, freely-ordered list (unlike the RFI Log's fixed categories) — each qualification is
+  // its own topic, usually tied back to a specific RFI response that settled what's in/out of
+  // the GMP, and sometimes to a Value Analysis alternate that would change the wording if
+  // accepted. The RFI/VA references and the "Note" field are Rachel's own tracking — only Topic
+  // + Text goes into the exported/copied list, matching how she actually hands this to the
+  // estimating team (the formal qualification wording, with internal citations stripped out).
+
+  function getQualificationsLog(project) {
+    project.qualificationsLog = project.qualificationsLog || { entries: [] };
+    project.qualificationsLog.entries = project.qualificationsLog.entries || [];
+    return project.qualificationsLog;
+  }
+
+  function addQualificationEntry(project) {
+    const log = getQualificationsLog(project);
+    log.entries.push({
+      id: "qual_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7),
+      topic: "",
+      rfiRef: "",
+      text: "",
+      allowance: "",
+      vaRef: "",
+      altText: "",
+      note: "",
+    });
+    saveState();
+    renderQualificationsBody(project);
+    updateQualificationsProgressLabel(project);
+  }
+
+  async function removeQualificationEntry(project, entryId) {
+    const ok = await miniConfirm("Remove this qualification? This can't be undone.", { okLabel: "Remove", danger: true });
+    if (!ok) return;
+    const log = getQualificationsLog(project);
+    const idx = log.entries.findIndex((e) => e.id === entryId);
+    if (idx >= 0) log.entries.splice(idx, 1);
+    saveState();
+    renderQualificationsBody(project);
+    updateQualificationsProgressLabel(project);
+  }
+
+  function countQualificationsStats(project) {
+    const entries = getQualificationsLog(project).entries;
+    const total = entries.length;
+    const filled = entries.filter((e) => (e.text || "").trim()).length;
+    return { total, filled };
+  }
+
+  function renderQualificationsAffordance(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "item-inline-actions";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm";
+    btn.textContent = "Open Qualifications & Assumptions";
+    btn.addEventListener("click", () => openQualificationsDialog(project));
+
+    const { total } = countQualificationsStats(project);
+    const hint = document.createElement("span");
+    hint.className = "nof-progress-inline";
+    hint.textContent = total > 0 ? `${total} qualification${total === 1 ? "" : "s"} drafted` : "None drafted yet";
+
+    wrap.appendChild(btn);
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function openQualificationsDialog(project) {
+    closeAllDialogs(qualificationsDialog);
+    qualificationsProjectId = project.id;
+    qualificationsProjectName.textContent = `${project.name} — ${project.location}`;
+    renderQualificationsBody(project);
+    updateQualificationsProgressLabel(project);
+    qualificationsDialog.showModal();
+  }
+
+  function updateQualificationsProgressLabel(project) {
+    const { total, filled } = countQualificationsStats(project);
+    qualificationsProgress.textContent = total > 0
+      ? `${filled} of ${total} drafted`
+      : "No qualifications added yet";
+  }
+
+  function renderQualificationsBody(project) {
+    qualificationsBody.innerHTML = "";
+
+    const note = document.createElement("p");
+    note.className = "pdpo-linked-note";
+    note.textContent = "Each one usually traces back to an RFI response that settled what's in or out of the GMP. " +
+      "RFI/VA references and the note are your own tracking — only Topic and Text go into Copy All / Export .pdf.";
+    qualificationsBody.appendChild(note);
+
+    const entries = getQualificationsLog(project).entries;
+    const list = document.createElement("div");
+    list.className = "rfi-entry-list";
+    entries.forEach((entry, idx) => list.appendChild(renderQualificationCard(project, entry, idx + 1)));
+    qualificationsBody.appendChild(list);
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "btn btn-sm rfi-add-btn";
+    addBtn.textContent = "+ Add Qualification";
+    addBtn.addEventListener("click", () => addQualificationEntry(project));
+    qualificationsBody.appendChild(addBtn);
+  }
+
+  function renderQualificationCard(project, entry, seq) {
+    function field(labelText, key, tag, extraClass) {
+      const wrap = document.createElement("label");
+      wrap.className = "nof-field" + (extraClass ? " " + extraClass : "");
+      const span = document.createElement("span");
+      span.textContent = labelText;
+      wrap.appendChild(span);
+      const input = document.createElement(tag || "input");
+      if (!tag || tag === "input") input.type = "text";
+      input.value = entry[key] || "";
+      input.addEventListener("input", () => {
+        entry[key] = input.value;
+        saveState();
+        if (key === "text") updateQualificationsProgressLabel(project);
+      });
+      wrap.appendChild(input);
+      return wrap;
+    }
+
+    const card = document.createElement("div");
+    card.className = "rfi-entry-card";
+
+    const header = document.createElement("div");
+    header.className = "rfi-entry-card-header";
+    const label = document.createElement("span");
+    label.className = "rfi-entry-number";
+    label.textContent = `Qualification ${seq}`;
+    header.appendChild(label);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn btn-sm rfi-remove-btn";
+    removeBtn.textContent = "Remove";
+    removeBtn.addEventListener("click", () => removeQualificationEntry(project, entry.id));
+    header.appendChild(removeBtn);
+    card.appendChild(header);
+
+    const grid = document.createElement("div");
+    grid.className = "rfi-entry-grid";
+    grid.appendChild(field("Topic", "topic"));
+    grid.appendChild(field("RFI Reference", "rfiRef"));
+    card.appendChild(grid);
+
+    card.appendChild(field("Qualification / Assumption Text", "text", "textarea", "rfi-question-field"));
+
+    const grid2 = document.createElement("div");
+    grid2.className = "rfi-entry-grid";
+    grid2.appendChild(field("Allowance Amount", "allowance"));
+    grid2.appendChild(field("VA Reference (if accepted, wording changes)", "vaRef"));
+    card.appendChild(grid2);
+
+    card.appendChild(field("Alternate Wording (if that VA is accepted)", "altText", "textarea"));
+    card.appendChild(field("Note to Self (not exported)", "note", "textarea"));
+
+    return card;
+  }
+
+  // Formal numbered list ready to paste into a GMP/qualifications document — Topic + Text only,
+  // same as Rachel's own "remove the RFI language" edit on the source wording.
+  function buildQualificationsText(project) {
+    const entries = getQualificationsLog(project).entries.filter((e) => (e.topic || "").trim() || (e.text || "").trim());
+    return entries.map((e, idx) => {
+      const topic = (e.topic || "").trim();
+      const text = (e.text || "").trim() || "—";
+      return topic ? `${idx + 1}. ${topic}: ${text}` : `${idx + 1}. ${text}`;
+    }).join("\n\n");
+  }
+
+  // navigator.clipboard needs a permission the sandboxed-iframe/preview contexts this app can
+  // run in don't always grant (same reasoning as miniDialogAsk replacing window.alert/confirm) —
+  // falls back to a hidden-textarea + execCommand copy, and reports failure rather than silently
+  // doing nothing.
+  async function copyTextToClipboard(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) {
+      // fall through to the execCommand fallback below
+    }
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const ok = document.execCommand("copy");
+      textarea.remove();
+      return ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function handleCopyQualifications() {
+    const project = state.projects.find((p) => p.id === qualificationsProjectId);
+    if (!project) return;
+    const text = buildQualificationsText(project);
+    if (!text) {
+      await miniAlert("Nothing to copy yet — add a qualification first.");
+      return;
+    }
+    const ok = await copyTextToClipboard(text);
+    await miniAlert(ok
+      ? "Copied to clipboard — paste into the GMP qualifications list."
+      : "Couldn't copy automatically (clipboard access is blocked here) — select the text in each qualification and copy it by hand.");
+  }
+
+  async function handleExportQualificationsPdf() {
+    const project = state.projects.find((p) => p.id === qualificationsProjectId);
+    if (!project) return;
+
+    if (typeof PDFLib === "undefined") {
+      await miniAlert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
+      return;
+    }
+
+    const exportBtn = document.getElementById("exportQualificationsBtn");
+    const originalLabel = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = "Exporting…";
+    try {
+      const blob = await buildQualificationsPdf(project);
+      await offerDownload(`${sanitizeFilename(project.name)}_Qualifications_Assumptions.pdf`, blob);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = originalLabel;
+    }
+  }
+
+  async function buildQualificationsPdf(project) {
+    const { PDFDocument, StandardFonts } = PDFLib;
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const b = createPdfFormBuilder(doc, font, boldFont);
+
+    b.title("Qualifications & Assumptions");
+    b.subtitle(`${project.name} — ${project.location}`);
+    b.spacer(6);
+
+    const entries = getQualificationsLog(project).entries.filter((e) => (e.topic || "").trim() || (e.text || "").trim());
+    if (!entries.length) {
+      b.wrappedBlock("", "No qualifications added yet.");
+    }
+    entries.forEach((e, idx) => {
+      const topic = (e.topic || "").trim();
+      const text = (e.text || "").trim() || "—";
+      b.wrappedBlock(topic ? `${idx + 1}. ${topic}` : `${idx + 1}.`, text);
+      b.spacer(6);
     });
 
     const bytes = await doc.save();

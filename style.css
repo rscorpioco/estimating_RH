@@ -1202,6 +1202,10 @@ dialog.rfi-log-dialog {
   width: 820px;
 }
 
+dialog.qualifications-dialog {
+  width: 760px;
+}
+
 .rfi-category-section {
   margin-bottom: 22px;
 }
