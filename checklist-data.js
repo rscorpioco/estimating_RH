@@ -817,6 +817,11 @@ const LEVELING_MIN_BIDDERS = 3;
 // than free text so performance is easy to scan/compare across projects and people.
 const SIXS_FEEDBACK_GRADES = ["Great", "Good", "Fair"];
 
+// VA Log entry status (see the "Update the VA Log" Details checklist item) — an alternate's
+// status drives whether the Qualifications & Assumptions entry tied to it (by VA Reference)
+// should export its original wording or its alternate wording.
+const VA_STATUS_OPTIONS = ["Pending", "Accepted", "Rejected"];
+
 const LEVELING_TRADE_GROUPS = [
   { name: "SITE", trades: [
     { bp: "Emails", trade: "Bids Email Management" },

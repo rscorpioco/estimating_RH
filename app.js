@@ -87,6 +87,11 @@
   const qualificationsBody = document.getElementById("qualificationsBody");
   const qualificationsProgress = document.getElementById("qualificationsProgress");
 
+  const vaLogDialog = document.getElementById("vaLogDialog");
+  const vaLogProjectName = document.getElementById("vaLogProjectName");
+  const vaLogBody = document.getElementById("vaLogBody");
+  const vaLogProgress = document.getElementById("vaLogProgress");
+
   const miniDialog = document.getElementById("miniDialog");
   const miniDialogForm = document.getElementById("miniDialogForm");
   const miniDialogMessage = document.getElementById("miniDialogMessage");
@@ -141,6 +146,7 @@
   let sixsFeedbackProjectId = null;
   let rfiLogProjectId = null;
   let qualificationsProjectId = null;
+  let vaLogProjectId = null;
   // The Kickoff Package's rendered page thumbnails, each page's tagged category, and the parsed
   // pdf.js document (kept around so the zoom view can re-render any page on demand) — generated
   // from the central Drawings upload below, held in memory only (not persisted to localStorage
@@ -278,7 +284,7 @@
   // any other already-open dialog — without this, opening a second one stacks on top of the
   // first, and closing the top one leaves the other sitting there looking "stuck" open.
   function closeAllDialogs(except) {
-    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog, pdpoDialog, preconDialog, bondDialog, buildersRiskDialog, sixsFeedbackDialog, rfiLogDialog, qualificationsDialog].forEach((d) => {
+    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog, pdpoDialog, preconDialog, bondDialog, buildersRiskDialog, sixsFeedbackDialog, rfiLogDialog, qualificationsDialog, vaLogDialog].forEach((d) => {
       if (d && d !== except && d.open) d.close();
     });
   }
@@ -394,6 +400,13 @@
     document.getElementById("copyQualificationsBtn").addEventListener("click", handleCopyQualifications);
     document.getElementById("exportQualificationsBtn").addEventListener("click", handleExportQualificationsPdf);
     qualificationsDialog.addEventListener("close", () => {
+      renderProjectList();
+      renderActiveProject();
+    });
+
+    document.getElementById("closeVaLogBtn").addEventListener("click", () => vaLogDialog.close());
+    document.getElementById("exportVaLogBtn").addEventListener("click", handleExportVaLogPdf);
+    vaLogDialog.addEventListener("close", () => {
       renderProjectList();
       renderActiveProject();
     });
@@ -690,6 +703,7 @@
     const kickoff = countKickoffProgress(project);
     const rfiLog = countRfiLogStats(project);
     const qualifications = countQualificationsStats(project);
+    const vaLog = countVaLogStats(project);
     const levelOrBid = project.deliveryMethod === "Hard Bid" ? "Bid Day" : "Level Day";
     const unlocked = isPrimaryFormStarted(project);
 
@@ -714,8 +728,18 @@
       // started yet" styling still reads right (nothing logged), and it nudges attention back
       // to this card whenever RFIs are open but unanswered.
       { label: "RFI Log", filled: rfiLog.answered, total: rfiLog.total, onOpen: () => openRfiLogDialog(project) },
-      { label: "Qualifications & Assumptions", filled: qualifications.filled, total: qualifications.total, onOpen: () => openQualificationsDialog(project) },
+      {
+        label: "Qualifications & Assumptions", filled: qualifications.filled, total: qualifications.total,
+        suffix: qualifications.totalAllowance > 0 ? `· ${formatMoney(qualifications.totalAllowance)}` : "",
+        onOpen: () => openQualificationsDialog(project),
+      },
     );
+
+    // VA alternates are a CM at Risk GMP concept — Hard Bid projects don't carry them, same gate
+    // as the "Update the VA Log" checklist item itself (condition: "CM").
+    if (project.deliveryMethod === "CM at Risk (Interview)") {
+      entries.push({ label: "VA Log", filled: vaLog.decided, total: vaLog.total, onOpen: () => openVaLogDialog(project) });
+    }
 
     if (unlocked) {
       const bond = countBondFieldsFilled(project);
@@ -742,7 +766,7 @@
       item.classList.toggle("not-started", !started);
       item.innerHTML = `
         <span class="forms-summary-item-label">${escapeHtml(entry.label)}</span>
-        <span class="forms-summary-item-progress">${entry.filled}/${entry.total}</span>
+        <span class="forms-summary-item-progress">${entry.filled}/${entry.total}${entry.suffix ? " " + escapeHtml(entry.suffix) : ""}</span>
       `;
       item.addEventListener("click", entry.onOpen);
       list.appendChild(item);
@@ -898,6 +922,10 @@
 
     if (item.id === "det-qualassumptions") {
       wrap.appendChild(renderQualificationsAffordance(project));
+    }
+
+    if (item.id === "det-valog") {
+      wrap.appendChild(renderVaLogAffordance(project));
     }
 
     return wrap;
@@ -4357,7 +4385,8 @@
     const entries = getQualificationsLog(project).entries;
     const total = entries.length;
     const filled = entries.filter((e) => (e.text || "").trim()).length;
-    return { total, filled };
+    const totalAllowance = entries.reduce((sum, e) => sum + parseMoneyAmount(e.allowance), 0);
+    return { total, filled, totalAllowance };
   }
 
   function renderQualificationsAffordance(project) {
@@ -4390,9 +4419,10 @@
   }
 
   function updateQualificationsProgressLabel(project) {
-    const { total, filled } = countQualificationsStats(project);
+    const { total, filled, totalAllowance } = countQualificationsStats(project);
+    const allowanceSuffix = totalAllowance > 0 ? ` · ${formatMoney(totalAllowance)} in allowances` : "";
     qualificationsProgress.textContent = total > 0
-      ? `${filled} of ${total} drafted`
+      ? `${filled} of ${total} drafted${allowanceSuffix}`
       : "No qualifications added yet";
   }
 
@@ -4435,7 +4465,7 @@
       input.addEventListener("input", () => {
         entry[key] = input.value;
         saveState();
-        if (key === "text") updateQualificationsProgressLabel(project);
+        if (key === "text" || key === "allowance") updateQualificationsProgressLabel(project);
       });
       wrap.appendChild(input);
       return wrap;
@@ -4472,14 +4502,79 @@
 
     const grid2 = document.createElement("div");
     grid2.className = "rfi-entry-grid";
-    grid2.appendChild(field("Allowance Amount", "allowance"));
-    grid2.appendChild(field("VA Reference (if accepted, wording changes)", "vaRef"));
+    grid2.appendChild(field("Allowance Amount", "allowance", null, null, "e.g. $12,500"));
+
+    const vaRefWrap = document.createElement("label");
+    vaRefWrap.className = "nof-field";
+    const vaRefSpan = document.createElement("span");
+    vaRefSpan.textContent = "VA Reference (if accepted, wording changes)";
+    vaRefWrap.appendChild(vaRefSpan);
+    const vaRefInput = document.createElement("input");
+    vaRefInput.type = "text";
+    vaRefInput.placeholder = "e.g. VA #18";
+    const vaDatalistId = `qualVaRefs_${project.id}`;
+    vaRefInput.setAttribute("list", vaDatalistId);
+    vaRefInput.value = entry.vaRef || "";
+    vaRefWrap.appendChild(vaRefInput);
+    const vaDatalist = document.createElement("datalist");
+    vaDatalist.id = vaDatalistId;
+    getVaLog(project).entries.forEach((v) => { if ((v.vaNumber || "").trim()) vaDatalist.appendChild(new Option(v.vaNumber, v.vaNumber)); });
+    vaRefWrap.appendChild(vaDatalist);
+    grid2.appendChild(vaRefWrap);
     card.appendChild(grid2);
 
-    card.appendChild(field("Alternate Wording (if that VA is accepted)", "altText", "textarea"));
+    // Live status pulled from the VA Log by matching VA Reference — this is the actual link:
+    // once a VA is marked Accepted there, every qualification tied to it flags it here, and
+    // Copy All / Export .pdf switch to the Alternate Wording automatically.
+    const vaStatus = document.createElement("p");
+    vaStatus.className = "qual-va-status";
+    vaStatus.hidden = true;
+    function refreshVaStatus() {
+      const match = findVaEntry(project, entry.vaRef);
+      if (!match) {
+        vaStatus.hidden = true;
+        return;
+      }
+      vaStatus.hidden = false;
+      if (match.status === "Accepted") {
+        vaStatus.className = "qual-va-status accepted";
+        vaStatus.textContent = (entry.altText || "").trim()
+          ? `✓ ${match.vaNumber} accepted — export will use the Alternate Wording below.`
+          : `✓ ${match.vaNumber} accepted — add Alternate Wording below so the export switches to it.`;
+      } else if (match.status === "Rejected") {
+        vaStatus.className = "qual-va-status rejected";
+        vaStatus.textContent = `${match.vaNumber} was rejected — keeping the original wording.`;
+      } else {
+        vaStatus.className = "qual-va-status pending";
+        vaStatus.textContent = `${match.vaNumber} is still pending in the VA Log.`;
+      }
+    }
+    vaRefInput.addEventListener("input", () => {
+      entry.vaRef = vaRefInput.value;
+      saveState();
+      refreshVaStatus();
+    });
+    refreshVaStatus();
+    card.appendChild(vaStatus);
+
+    const altTextField = field("Alternate Wording (if that VA is accepted)", "altText", "textarea");
+    altTextField.querySelector("textarea").addEventListener("input", refreshVaStatus);
+    card.appendChild(altTextField);
     card.appendChild(field("Note to Self (not exported)", "note", "textarea"));
 
     return card;
+  }
+
+  // Picks the Alternate Wording instead of the main text whenever the linked VA (by VA
+  // Reference) has been marked Accepted in the VA Log and an alternate was actually written —
+  // the point of linking the two logs: accept a VA once, and every qualification tied to it
+  // switches wording on its own instead of you having to remember to edit each one by hand.
+  function resolveQualificationText(project, e) {
+    const match = findVaEntry(project, e.vaRef);
+    if (match && match.status === "Accepted" && (e.altText || "").trim()) {
+      return e.altText.trim();
+    }
+    return (e.text || "").trim() || "—";
   }
 
   // Formal numbered list ready to paste into a GMP/qualifications document — Topic + Text only,
@@ -4488,7 +4583,7 @@
     const entries = getQualificationsLog(project).entries.filter((e) => (e.topic || "").trim() || (e.text || "").trim());
     return entries.map((e, idx) => {
       const topic = (e.topic || "").trim();
-      const text = (e.text || "").trim() || "—";
+      const text = resolveQualificationText(project, e);
       return topic ? `${idx + 1}. ${topic}: ${text}` : `${idx + 1}. ${text}`;
     }).join("\n\n");
   }
@@ -4575,10 +4670,256 @@
     }
     entries.forEach((e, idx) => {
       const topic = (e.topic || "").trim();
-      const text = (e.text || "").trim() || "—";
+      const text = resolveQualificationText(project, e);
       b.wrappedBlock(topic ? `${idx + 1}. ${topic}` : `${idx + 1}.`, text);
       b.spacer(6);
     });
+
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: "application/pdf" });
+  }
+
+  // ---------- VA Log ----------
+  // Value Analysis alternates — a flat list, each with a cost impact and a status (Pending,
+  // Accepted, Rejected). This is the other half of the Qualifications & Assumptions link: a
+  // qualification's VA Reference is matched against this log's VA Number, and marking a VA
+  // Accepted here is what flips that qualification's export to its Alternate Wording.
+
+  // Strips everything but digits/./- so "$12,500", "12500", and "$_______" (placeholder, no
+  // digits) all parse sensibly — the last one is treated as 0, same as a blank field.
+  function parseMoneyAmount(raw) {
+    if (!raw) return 0;
+    const cleaned = String(raw).replace(/[^0-9.-]/g, "");
+    const n = parseFloat(cleaned);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function formatMoney(n) {
+    const rounded = Math.round(n);
+    return (rounded < 0 ? "-$" : "$") + Math.abs(rounded).toLocaleString();
+  }
+
+  function getVaLog(project) {
+    project.vaLog = project.vaLog || { entries: [] };
+    project.vaLog.entries = project.vaLog.entries || [];
+    return project.vaLog;
+  }
+
+  function findVaEntry(project, ref) {
+    const clean = (ref || "").trim().toLowerCase();
+    if (!clean) return null;
+    return getVaLog(project).entries.find((v) => (v.vaNumber || "").trim().toLowerCase() === clean) || null;
+  }
+
+  function addVaEntry(project) {
+    const log = getVaLog(project);
+    log.entries.push({
+      id: "va_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7),
+      vaNumber: "",
+      description: "",
+      costImpact: "",
+      status: "Pending",
+      notes: "",
+    });
+    saveState();
+    renderVaLogBody(project);
+    updateVaLogProgressLabel(project);
+  }
+
+  async function removeVaEntry(project, entryId) {
+    const ok = await miniConfirm("Remove this VA entry? This can't be undone.", { okLabel: "Remove", danger: true });
+    if (!ok) return;
+    const log = getVaLog(project);
+    const idx = log.entries.findIndex((v) => v.id === entryId);
+    if (idx >= 0) log.entries.splice(idx, 1);
+    saveState();
+    renderVaLogBody(project);
+    updateVaLogProgressLabel(project);
+  }
+
+  function countVaLogStats(project) {
+    const entries = getVaLog(project).entries;
+    const total = entries.length;
+    const accepted = entries.filter((v) => v.status === "Accepted");
+    const rejected = entries.filter((v) => v.status === "Rejected").length;
+    const totalAcceptedImpact = accepted.reduce((sum, v) => sum + parseMoneyAmount(v.costImpact), 0);
+    return { total, decided: accepted.length + rejected, accepted: accepted.length, totalAcceptedImpact };
+  }
+
+  function renderVaLogAffordance(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "item-inline-actions";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm";
+    btn.textContent = "Open VA Log";
+    btn.addEventListener("click", () => openVaLogDialog(project));
+
+    const { total, decided } = countVaLogStats(project);
+    const hint = document.createElement("span");
+    hint.className = "nof-progress-inline";
+    hint.textContent = total > 0 ? `${decided} of ${total} decided` : "None logged yet";
+
+    wrap.appendChild(btn);
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function openVaLogDialog(project) {
+    closeAllDialogs(vaLogDialog);
+    vaLogProjectId = project.id;
+    vaLogProjectName.textContent = `${project.name} — ${project.location}`;
+    renderVaLogBody(project);
+    updateVaLogProgressLabel(project);
+    vaLogDialog.showModal();
+  }
+
+  function updateVaLogProgressLabel(project) {
+    const { total, decided, totalAcceptedImpact } = countVaLogStats(project);
+    const impactSuffix = totalAcceptedImpact !== 0 ? ` · ${formatMoney(totalAcceptedImpact)} accepted` : "";
+    vaLogProgress.textContent = total > 0
+      ? `${decided} of ${total} decided${impactSuffix}`
+      : "No VA alternates logged yet";
+  }
+
+  function renderVaLogBody(project) {
+    vaLogBody.innerHTML = "";
+
+    const note = document.createElement("p");
+    note.className = "pdpo-linked-note";
+    note.textContent = "Marking a VA Accepted here flags every Qualifications & Assumptions entry tied to it (by " +
+      "VA Reference) and switches its export to the Alternate Wording — no need to edit each one by hand.";
+    vaLogBody.appendChild(note);
+
+    const entries = getVaLog(project).entries;
+    const list = document.createElement("div");
+    list.className = "rfi-entry-list";
+    entries.forEach((entry) => list.appendChild(renderVaEntryCard(project, entry)));
+    vaLogBody.appendChild(list);
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "btn btn-sm rfi-add-btn";
+    addBtn.textContent = "+ Add VA";
+    addBtn.addEventListener("click", () => addVaEntry(project));
+    vaLogBody.appendChild(addBtn);
+  }
+
+  function renderVaEntryCard(project, entry) {
+    function field(labelText, key, tag, placeholder) {
+      const wrap = document.createElement("label");
+      wrap.className = "nof-field";
+      const span = document.createElement("span");
+      span.textContent = labelText;
+      wrap.appendChild(span);
+      const input = document.createElement(tag || "input");
+      if (!tag || tag === "input") input.type = "text";
+      if (placeholder) input.placeholder = placeholder;
+      input.value = entry[key] || "";
+      input.addEventListener("input", () => {
+        entry[key] = input.value;
+        saveState();
+      });
+      wrap.appendChild(input);
+      return wrap;
+    }
+
+    const card = document.createElement("div");
+    card.className = "rfi-entry-card";
+
+    const header = document.createElement("div");
+    header.className = "rfi-entry-card-header";
+    const label = document.createElement("span");
+    label.className = "rfi-entry-number";
+    label.textContent = entry.vaNumber || "VA (untitled)";
+    header.appendChild(label);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn btn-sm rfi-remove-btn";
+    removeBtn.textContent = "Remove";
+    removeBtn.addEventListener("click", () => removeVaEntry(project, entry.id));
+    header.appendChild(removeBtn);
+    card.appendChild(header);
+
+    const grid = document.createElement("div");
+    grid.className = "rfi-entry-grid";
+
+    const numberField = field("VA Number", "vaNumber", null, "e.g. VA #18");
+    numberField.querySelector("input").addEventListener("input", () => {
+      label.textContent = entry.vaNumber || "VA (untitled)";
+    });
+    grid.appendChild(numberField);
+    grid.appendChild(field("Cost Impact", "costImpact", null, "e.g. -$4,200 (savings) or $1,500"));
+    card.appendChild(grid);
+
+    card.appendChild(field("Description", "description", "textarea"));
+
+    const statusWrap = document.createElement("label");
+    statusWrap.className = "nof-field";
+    const statusSpan = document.createElement("span");
+    statusSpan.textContent = "Status";
+    statusWrap.appendChild(statusSpan);
+    const statusSelect = document.createElement("select");
+    VA_STATUS_OPTIONS.forEach((s) => statusSelect.add(new Option(s, s)));
+    statusSelect.value = entry.status || "Pending";
+    statusSelect.addEventListener("change", () => {
+      entry.status = statusSelect.value;
+      saveState();
+      updateVaLogProgressLabel(project);
+    });
+    statusWrap.appendChild(statusSelect);
+    card.appendChild(statusWrap);
+
+    card.appendChild(field("Notes", "notes", "textarea"));
+
+    return card;
+  }
+
+  async function handleExportVaLogPdf() {
+    const project = state.projects.find((p) => p.id === vaLogProjectId);
+    if (!project) return;
+
+    if (typeof PDFLib === "undefined") {
+      await miniAlert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
+      return;
+    }
+
+    const exportBtn = document.getElementById("exportVaLogBtn");
+    const originalLabel = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = "Exporting…";
+    try {
+      const blob = await buildVaLogPdf(project);
+      await offerDownload(`${sanitizeFilename(project.name)}_VA_Log.pdf`, blob);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = originalLabel;
+    }
+  }
+
+  async function buildVaLogPdf(project) {
+    const { PDFDocument, StandardFonts } = PDFLib;
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const b = createPdfFormBuilder(doc, font, boldFont);
+
+    b.title("VA Log");
+    b.subtitle(`${project.name} — ${project.location}`);
+    b.spacer(6);
+
+    const entries = getVaLog(project).entries;
+    const colXs = [0, 70, 150, 420];
+    b.tableHeaderRow(["VA #", "Status", "Cost Impact", "Description"], colXs);
+    entries.forEach((v) => {
+      b.tableRow([v.vaNumber || "—", v.status || "Pending", v.costImpact || "—", v.description || "—"], colXs);
+    });
+    b.spacer(10);
+
+    const { totalAcceptedImpact } = countVaLogStats(project);
+    b.fieldLine("Total Accepted Cost Impact", formatMoney(totalAcceptedImpact), 180);
 
     const bytes = await doc.save();
     return new Blob([bytes], { type: "application/pdf" });

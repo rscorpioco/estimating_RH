@@ -1206,6 +1206,21 @@ dialog.qualifications-dialog {
   width: 760px;
 }
 
+dialog.va-log-dialog {
+  width: 700px;
+}
+
+.qual-va-status {
+  font-size: 11.5px;
+  margin: 2px 0 10px;
+  padding: 6px 9px;
+  border-radius: 6px;
+}
+
+.qual-va-status.accepted { background: #e3f2e8; color: var(--green); }
+.qual-va-status.rejected { background: #fbeae8; color: var(--red); }
+.qual-va-status.pending { background: #faedd6; color: var(--amber); }
+
 .rfi-category-section {
   margin-bottom: 22px;
 }
