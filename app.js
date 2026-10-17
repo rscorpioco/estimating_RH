@@ -4310,12 +4310,14 @@
   }
 
   // ---------- Qualifications & Assumptions ----------
-  // A flat, freely-ordered list (unlike the RFI Log's fixed categories) — each qualification is
-  // its own topic, usually tied back to a specific RFI response that settled what's in/out of
-  // the GMP, and sometimes to a Value Analysis alternate that would change the wording if
-  // accepted. The RFI/VA references and the "Note" field are Rachel's own tracking — only Topic
-  // + Text goes into the exported/copied list, matching how she actually hands this to the
-  // estimating team (the formal qualification wording, with internal citations stripped out).
+  // A flat, freely-ordered list (unlike the RFI Log's fixed categories) — each qualification
+  // states an exclusion from the GMP scope or a deviation from what the Contract Documents
+  // (drawings/specs) show, not a general assumption. It's usually tied back to a specific RFI
+  // response that settled what's in/out of the GMP, and sometimes to a Value Analysis alternate
+  // that would change the wording if accepted. The RFI/VA references and the "Note" field are
+  // Rachel's own tracking — only Topic + the exclusion/deviation text goes into the
+  // exported/copied list, matching how she actually hands this to the estimating team (the
+  // formal qualification wording, with internal citations stripped out).
 
   function getQualificationsLog(project) {
     project.qualificationsLog = project.qualificationsLog || { entries: [] };
@@ -4399,8 +4401,10 @@
 
     const note = document.createElement("p");
     note.className = "pdpo-linked-note";
-    note.textContent = "Each one usually traces back to an RFI response that settled what's in or out of the GMP. " +
-      "RFI/VA references and the note are your own tracking — only Topic and Text go into Copy All / Export .pdf.";
+    note.textContent = "Frame each one as an exclusion from the GMP scope or a deviation from what the Contract " +
+      "Documents (drawings/specs) show — not a general assumption. It usually traces back to an RFI response that " +
+      "settled the point. RFI/VA references and the note are your own tracking — only Topic and the exclusion/" +
+      "deviation text go into Copy All / Export .pdf.";
     qualificationsBody.appendChild(note);
 
     const entries = getQualificationsLog(project).entries;
@@ -4418,7 +4422,7 @@
   }
 
   function renderQualificationCard(project, entry, seq) {
-    function field(labelText, key, tag, extraClass) {
+    function field(labelText, key, tag, extraClass, placeholder) {
       const wrap = document.createElement("label");
       wrap.className = "nof-field" + (extraClass ? " " + extraClass : "");
       const span = document.createElement("span");
@@ -4426,6 +4430,7 @@
       wrap.appendChild(span);
       const input = document.createElement(tag || "input");
       if (!tag || tag === "input") input.type = "text";
+      if (placeholder) input.placeholder = placeholder;
       input.value = entry[key] || "";
       input.addEventListener("input", () => {
         entry[key] = input.value;
@@ -4456,11 +4461,14 @@
 
     const grid = document.createElement("div");
     grid.className = "rfi-entry-grid";
-    grid.appendChild(field("Topic", "topic"));
-    grid.appendChild(field("RFI Reference", "rfiRef"));
+    grid.appendChild(field("Topic", "topic", null, null, "e.g. Utility locates, Roof warranties, SECO fees"));
+    grid.appendChild(field("RFI Reference", "rfiRef", null, null, "e.g. RFI Site #3"));
     card.appendChild(grid);
 
-    card.appendChild(field("Qualification / Assumption Text", "text", "textarea", "rfi-question-field"));
+    card.appendChild(field(
+      "Exclusion / Deviation from Drawings", "text", "textarea", "rfi-question-field",
+      "What's excluded from the GMP scope, or how does this deviate from what the Contract Documents (drawings/specs) show?"
+    ));
 
     const grid2 = document.createElement("div");
     grid2.className = "rfi-entry-grid";
