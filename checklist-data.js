@@ -277,7 +277,7 @@ const CHECKLIST_PHASES = [
 ];
 
 const LOCATIONS = ["Gainesville", "Tallahassee", "Orlando", "Jacksonville", "Ocala"];
-const DELIVERY_METHODS = ["CM at Risk (Interview)", "Hard Bid"];
+const DELIVERY_METHODS = ["CM at Risk (Interview)", "Hard Bid", "Continuing Services Contract"];
 const TEAM_LEAD_OPTIONS = ["Kevin Bradford", "Ken Brown", "Blake Honerbrink", "Carlos Vazquez", "Rachel Hottor"];
 
 // ---------- Meeting & Task Schedule ----------
