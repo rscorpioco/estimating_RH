@@ -398,15 +398,35 @@ body {
   cursor: pointer;
 }
 
-.item-row label {
+.item-main-label {
+  flex: 1;
   font-size: 14px;
   line-height: 1.4;
   cursor: pointer;
 }
 
-.item-row label.checked {
+.item-main-label.checked {
   color: var(--text-muted);
   text-decoration: line-through;
+}
+
+.item-main-label.not-needed {
+  color: var(--text-muted);
+  font-style: italic;
+  text-decoration: line-through;
+  text-decoration-style: dashed;
+}
+
+.item-na-checkbox {
+  margin-top: 3px;
+}
+
+.item-na-label {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  align-self: center;
 }
 
 .item-link {

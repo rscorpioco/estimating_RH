@@ -537,12 +537,19 @@
     return phase.items.filter((item) => itemApplies(item, project));
   }
 
+  // Marking an item "Not Needed" is Rachel's own judgment call that it doesn't apply to this
+  // particular project (distinct from itemApplies' structural conditions above) — it's excluded
+  // from both sides of the progress count, the same way a condition-filtered item is, so it
+  // neither drags a phase down nor inflates it, and a phase can still hit 100% with items left
+  // unchecked because they're marked not needed.
   function countPhaseItems(phase, project) {
-    return applicableItems(phase, project).length;
+    const notNeeded = project.notNeeded || {};
+    return applicableItems(phase, project).filter((item) => !notNeeded[item.id]).length;
   }
 
   function countPhaseChecked(phase, checked, project) {
-    return applicableItems(phase, project).filter((item) => checked[item.id]).length;
+    const notNeeded = project.notNeeded || {};
+    return applicableItems(phase, project).filter((item) => checked[item.id] && !notNeeded[item.id]).length;
   }
 
   function computeOverallProgress(project) {
@@ -849,14 +856,23 @@
     const row = document.createElement("div");
     row.className = "item-row";
 
+    const notNeeded = project.notNeeded || {};
+    const isNotNeeded = !!notNeeded[item.id];
+
     const cb = document.createElement("input");
     cb.type = "checkbox";
     cb.id = "cb_" + item.id;
     cb.checked = !!checked[item.id];
     cb.addEventListener("change", () => {
       project.checked = project.checked || {};
-      if (cb.checked) project.checked[item.id] = true;
-      else delete project.checked[item.id];
+      if (cb.checked) {
+        project.checked[item.id] = true;
+        // Done and Not Needed are mutually exclusive — checking one off clears the other.
+        project.notNeeded = project.notNeeded || {};
+        delete project.notNeeded[item.id];
+      } else {
+        delete project.checked[item.id];
+      }
       saveState();
       renderProjectList();
       renderActiveProject();
@@ -864,7 +880,7 @@
 
     const label = document.createElement("label");
     label.htmlFor = cb.id;
-    label.className = cb.checked ? "checked" : "";
+    label.className = "item-main-label" + (cb.checked ? " checked" : (isNotNeeded ? " not-needed" : ""));
     label.textContent = item.text;
     if (item.link) {
       const a = document.createElement("a");
@@ -876,8 +892,35 @@
       label.appendChild(a);
     }
 
+    const naCb = document.createElement("input");
+    naCb.type = "checkbox";
+    naCb.className = "item-na-checkbox";
+    naCb.id = "na_" + item.id;
+    naCb.checked = isNotNeeded;
+    naCb.title = "Mark as not needed for this project — excluded from progress either way";
+    naCb.addEventListener("change", () => {
+      project.notNeeded = project.notNeeded || {};
+      if (naCb.checked) {
+        project.notNeeded[item.id] = true;
+        project.checked = project.checked || {};
+        delete project.checked[item.id];
+      } else {
+        delete project.notNeeded[item.id];
+      }
+      saveState();
+      renderProjectList();
+      renderActiveProject();
+    });
+
+    const naLabel = document.createElement("label");
+    naLabel.htmlFor = naCb.id;
+    naLabel.className = "item-na-label";
+    naLabel.textContent = "Not needed";
+
     row.appendChild(cb);
     row.appendChild(label);
+    row.appendChild(naCb);
+    row.appendChild(naLabel);
     wrap.appendChild(row);
 
     if (item.sub && item.sub.length) {
