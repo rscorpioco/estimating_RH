@@ -92,6 +92,11 @@
   const vaLogBody = document.getElementById("vaLogBody");
   const vaLogProgress = document.getElementById("vaLogProgress");
 
+  const submissionReviewDialog = document.getElementById("submissionReviewDialog");
+  const submissionReviewProjectName = document.getElementById("submissionReviewProjectName");
+  const submissionReviewBody = document.getElementById("submissionReviewBody");
+  const submissionReviewProgress = document.getElementById("submissionReviewProgress");
+
   const miniDialog = document.getElementById("miniDialog");
   const miniDialogForm = document.getElementById("miniDialogForm");
   const miniDialogMessage = document.getElementById("miniDialogMessage");
@@ -147,6 +152,7 @@
   let rfiLogProjectId = null;
   let qualificationsProjectId = null;
   let vaLogProjectId = null;
+  let submissionReviewProjectId = null;
   // The Kickoff Package's rendered page thumbnails, each page's tagged category, and the parsed
   // pdf.js document (kept around so the zoom view can re-render any page on demand) — generated
   // from the central Drawings upload below, held in memory only (not persisted to localStorage
@@ -284,7 +290,7 @@
   // any other already-open dialog — without this, opening a second one stacks on top of the
   // first, and closing the top one leaves the other sitting there looking "stuck" open.
   function closeAllDialogs(except) {
-    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog, pdpoDialog, preconDialog, bondDialog, buildersRiskDialog, sixsFeedbackDialog, rfiLogDialog, qualificationsDialog, vaLogDialog].forEach((d) => {
+    [dialog, opportunityDialog, scheduleDialog, kickoffDialog, kickoffZoomDialog, nofDocViewerDialog, levelDialog, teamDialog, pdpoDialog, preconDialog, bondDialog, buildersRiskDialog, sixsFeedbackDialog, rfiLogDialog, qualificationsDialog, vaLogDialog, submissionReviewDialog].forEach((d) => {
       if (d && d !== except && d.open) d.close();
     });
   }
@@ -407,6 +413,13 @@
     document.getElementById("closeVaLogBtn").addEventListener("click", () => vaLogDialog.close());
     document.getElementById("exportVaLogBtn").addEventListener("click", handleExportVaLogPdf);
     vaLogDialog.addEventListener("close", () => {
+      renderProjectList();
+      renderActiveProject();
+    });
+
+    document.getElementById("closeSubmissionReviewBtn").addEventListener("click", () => submissionReviewDialog.close());
+    document.getElementById("exportSubmissionReviewBtn").addEventListener("click", handleExportSubmissionReviewPdf);
+    submissionReviewDialog.addEventListener("close", () => {
       renderProjectList();
       renderActiveProject();
     });
@@ -690,21 +703,10 @@
     });
   }
 
-  // A one-glance view of every fill-out form on the project, regardless of which phase/day-group
-  // it lives in — per Rachel's ask, so a form doesn't get lost in a long checklist and she can
-  // jump straight to whichever one needs attention instead of hunting through phases for it.
-  function renderFormsSummary(project) {
-    const wrap = document.createElement("div");
-    wrap.className = "forms-summary";
-
-    const title = document.createElement("div");
-    title.className = "forms-summary-title";
-    title.textContent = "Forms";
-    wrap.appendChild(title);
-
-    const list = document.createElement("div");
-    list.className = "forms-summary-list";
-
+  // The same {label, filled, total, onOpen, suffix?} list drives both the Forms summary card
+  // and the Submission Review dialog's "Forms & Logs" section — one source of truth for "which
+  // forms exist on this project and how filled-in are they" instead of two copies drifting apart.
+  function buildFormsSummaryEntries(project) {
     const pdpo = countPdPoFieldsFilled(project);
     const level = countLevelCoverage(project);
     const kickoff = countKickoffProgress(project);
@@ -762,26 +764,58 @@
       entries.push({ label: "6S Team Feedback", filled: sixsFeedback.filled, total: sixsFeedback.total, onOpen: () => openSixsFeedbackDialog(project) });
     }
 
-    entries.forEach((entry) => {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "forms-summary-item";
-      const started = entry.filled > 0;
-      const complete = entry.total > 0 && entry.filled >= entry.total;
-      item.classList.toggle("complete", complete);
-      item.classList.toggle("started", started && !complete);
-      item.classList.toggle("not-started", !started);
-      item.innerHTML = `
-        <span class="forms-summary-item-label">${escapeHtml(entry.label)}</span>
-        <span class="forms-summary-item-progress">${entry.filled}/${entry.total}${entry.suffix ? " " + escapeHtml(entry.suffix) : ""}</span>
-      `;
-      item.addEventListener("click", entry.onOpen);
-      list.appendChild(item);
-    });
+    return entries;
+  }
+
+  function renderStatusRow(entry) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "forms-summary-item";
+    const started = entry.filled > 0;
+    const complete = entry.total > 0 && entry.filled >= entry.total;
+    item.classList.toggle("complete", complete);
+    item.classList.toggle("started", started && !complete);
+    item.classList.toggle("not-started", !started);
+    item.innerHTML = `
+      <span class="forms-summary-item-label">${escapeHtml(entry.label)}</span>
+      <span class="forms-summary-item-progress">${entry.filled}/${entry.total}${entry.suffix ? " " + escapeHtml(entry.suffix) : ""}</span>
+    `;
+    item.addEventListener("click", entry.onOpen);
+    return item;
+  }
+
+  // A one-glance view of every fill-out form on the project, regardless of which phase/day-group
+  // it lives in — per Rachel's ask, so a form doesn't get lost in a long checklist and she can
+  // jump straight to whichever one needs attention instead of hunting through phases for it.
+  function renderFormsSummary(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "forms-summary";
+
+    const title = document.createElement("div");
+    title.className = "forms-summary-title";
+    title.textContent = "Forms";
+    wrap.appendChild(title);
+
+    const list = document.createElement("div");
+    list.className = "forms-summary-list";
+    buildFormsSummaryEntries(project).forEach((entry) => list.appendChild(renderStatusRow(entry)));
+
+    // Rendered separately from buildFormsSummaryEntries (rather than folded into it) so
+    // Submission Review's own "Forms & Logs" section, which reuses that same list, doesn't end
+    // up listing itself.
+    const openItems = countSubmissionReviewOpenItems(project);
+    const reviewCategories = project.deliveryMethod === "CM at Risk (Interview)" ? 3 : 2;
+    const reviewClear = (openItems.rfiOpen === 0 ? 1 : 0) +
+      (openItems.qualUndrafted === 0 && openItems.qualFlags.pendingVa === 0 && openItems.qualFlags.acceptedMissingAlt === 0 ? 1 : 0) +
+      (project.deliveryMethod === "CM at Risk (Interview)" ? (openItems.vaPending === 0 ? 1 : 0) : 0);
+    list.appendChild(renderStatusRow({
+      label: "Submission Review", filled: reviewClear, total: reviewCategories,
+      onOpen: () => openSubmissionReviewDialog(project),
+    }));
 
     wrap.appendChild(list);
 
-    if (!unlocked) {
+    if (!isPrimaryFormStarted(project)) {
       const lockedNote = document.createElement("p");
       lockedNote.className = "pdpo-linked-note";
       lockedNote.textContent = "Bond Request and Builder's Risk Request will show up here once the New Opportunity Form or Precon Start Up Form has been started.";
@@ -969,6 +1003,10 @@
 
     if (item.id === "det-valog") {
       wrap.appendChild(renderVaLogAffordance(project));
+    }
+
+    if (item.id === "done-reviewedited") {
+      wrap.appendChild(renderSubmissionReviewAffordance(project));
     }
 
     return wrap;
@@ -4963,6 +5001,195 @@
 
     const { totalAcceptedImpact } = countVaLogStats(project);
     b.fieldLine("Total Accepted Cost Impact", formatMoney(totalAcceptedImpact), 180);
+
+    const bytes = await doc.save();
+    return new Blob([bytes], { type: "application/pdf" });
+  }
+
+  // ---------- Submission Review ----------
+  // A read-only rollup, not its own data — pulled live from the RFI Log, Qualifications & VA Log,
+  // and the same Forms summary entries shown on the project page, so there's one place to check
+  // for loose ends before the deliverable/hard bid goes out. Wired to the Done phase's "Review
+  // the edited deliverable" item, right before "submit the deliverable/hard bid to the owner".
+
+  // A qualification whose VA Reference points at a still-Pending VA has wording that isn't
+  // settled yet; one whose VA was Accepted but never got Alternate Wording filled in will export
+  // its original (pre-VA) text, which is probably wrong — neither is visible from the Forms
+  // summary's plain filled/total count, so Submission Review calls them out by name.
+  function countQualificationsFlags(project) {
+    const entries = getQualificationsLog(project).entries;
+    let pendingVa = 0;
+    let acceptedMissingAlt = 0;
+    entries.forEach((e) => {
+      const match = findVaEntry(project, e.vaRef);
+      if (!match) return;
+      if (match.status === "Pending") pendingVa++;
+      else if (match.status === "Accepted" && !(e.altText || "").trim()) acceptedMissingAlt++;
+    });
+    return { pendingVa, acceptedMissingAlt };
+  }
+
+  // The 3 "open item" counts used for both the checklist hint and the Forms summary card —
+  // kept separate from the Forms & Logs section's filled/total rows since these are the ones
+  // that actually block a clean submission.
+  function countSubmissionReviewOpenItems(project) {
+    const rfiLog = countRfiLogStats(project);
+    const qualifications = countQualificationsStats(project);
+    const qualFlags = countQualificationsFlags(project);
+    const vaLog = countVaLogStats(project);
+    const vaPending = vaLog.total - vaLog.decided;
+    const total = rfiLog.open + (qualifications.total - qualifications.filled) + qualFlags.pendingVa + qualFlags.acceptedMissingAlt + vaPending;
+    return { total, rfiOpen: rfiLog.open, qualUndrafted: qualifications.total - qualifications.filled, qualFlags, vaPending };
+  }
+
+  function renderSubmissionReviewAffordance(project) {
+    const wrap = document.createElement("div");
+    wrap.className = "item-inline-actions";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-sm";
+    btn.textContent = "Review Before Submission";
+    btn.addEventListener("click", () => openSubmissionReviewDialog(project));
+
+    const { total } = countSubmissionReviewOpenItems(project);
+    const hint = document.createElement("span");
+    hint.className = "nof-progress-inline";
+    hint.textContent = total > 0 ? `${total} item${total === 1 ? "" : "s"} need attention` : "All clear";
+
+    wrap.appendChild(btn);
+    wrap.appendChild(hint);
+    return wrap;
+  }
+
+  function openSubmissionReviewDialog(project) {
+    closeAllDialogs(submissionReviewDialog);
+    submissionReviewProjectId = project.id;
+    submissionReviewProjectName.textContent = `${project.name} — ${project.location}`;
+    renderSubmissionReviewBody(project);
+    updateSubmissionReviewProgressLabel(project);
+    submissionReviewDialog.showModal();
+  }
+
+  function updateSubmissionReviewProgressLabel(project) {
+    const { total } = countSubmissionReviewOpenItems(project);
+    submissionReviewProgress.textContent = total > 0
+      ? `${total} open item${total === 1 ? "" : "s"} — see Open Items above`
+      : "All clear — ready to submit";
+  }
+
+  function renderSubmissionReviewBody(project) {
+    submissionReviewBody.innerHTML = "";
+
+    const { total, rfiOpen, qualUndrafted, qualFlags, vaPending } = countSubmissionReviewOpenItems(project);
+
+    const banner = document.createElement("div");
+    banner.className = "review-banner " + (total > 0 ? "attention" : "clear");
+    banner.textContent = total > 0
+      ? `${total} open item${total === 1 ? "" : "s"} across RFI Log, Qualifications, and VA Log — review before submitting.`
+      : "All clear — no open RFIs, undrafted qualifications, or pending VA decisions.";
+    submissionReviewBody.appendChild(banner);
+
+    const openTitle = document.createElement("div");
+    openTitle.className = "nof-section-title review-section-title";
+    openTitle.textContent = "Open Items";
+    submissionReviewBody.appendChild(openTitle);
+
+    function flagRow(label, count, onOpen) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "review-flag-row " + (count > 0 ? "attention" : "clear");
+      const labelSpan = document.createElement("span");
+      labelSpan.textContent = label;
+      const countSpan = document.createElement("span");
+      countSpan.className = "review-flag-count";
+      countSpan.textContent = count > 0 ? String(count) : "✓ Clear";
+      row.appendChild(labelSpan);
+      row.appendChild(countSpan);
+      row.addEventListener("click", onOpen);
+      return row;
+    }
+
+    submissionReviewBody.appendChild(flagRow(
+      `RFI Log — open (unanswered)`, rfiOpen, () => openRfiLogDialog(project)
+    ));
+    submissionReviewBody.appendChild(flagRow(
+      `Qualifications — not yet drafted`, qualUndrafted, () => openQualificationsDialog(project)
+    ));
+    submissionReviewBody.appendChild(flagRow(
+      `Qualifications — tied to a Pending VA (wording not final)`, qualFlags.pendingVa, () => openQualificationsDialog(project)
+    ));
+    submissionReviewBody.appendChild(flagRow(
+      `Qualifications — VA Accepted but no Alternate Wording`, qualFlags.acceptedMissingAlt, () => openQualificationsDialog(project)
+    ));
+    if (project.deliveryMethod === "CM at Risk (Interview)") {
+      submissionReviewBody.appendChild(flagRow(
+        `VA Log — still Pending`, vaPending, () => openVaLogDialog(project)
+      ));
+    }
+
+    const formsTitle = document.createElement("div");
+    formsTitle.className = "nof-section-title review-section-title";
+    formsTitle.textContent = "Forms & Logs";
+    submissionReviewBody.appendChild(formsTitle);
+
+    const list = document.createElement("div");
+    list.className = "forms-summary-list";
+    buildFormsSummaryEntries(project).forEach((entry) => list.appendChild(renderStatusRow(entry)));
+    submissionReviewBody.appendChild(list);
+  }
+
+  async function handleExportSubmissionReviewPdf() {
+    const project = state.projects.find((p) => p.id === submissionReviewProjectId);
+    if (!project) return;
+
+    if (typeof PDFLib === "undefined") {
+      await miniAlert("The PDF library didn't load (check your internet connection) — your entries are still saved in the app.");
+      return;
+    }
+
+    const exportBtn = document.getElementById("exportSubmissionReviewBtn");
+    const originalLabel = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = "Exporting…";
+    try {
+      const blob = await buildSubmissionReviewPdf(project);
+      await offerDownload(`${sanitizeFilename(project.name)}_Submission_Review.pdf`, blob);
+    } finally {
+      exportBtn.disabled = false;
+      exportBtn.textContent = originalLabel;
+    }
+  }
+
+  async function buildSubmissionReviewPdf(project) {
+    const { PDFDocument, StandardFonts } = PDFLib;
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await doc.embedFont(StandardFonts.HelveticaBold);
+    const b = createPdfFormBuilder(doc, font, boldFont);
+
+    b.title("Submission Review");
+    b.subtitle(`${project.name} — ${project.location}`);
+    b.spacer(6);
+
+    const { total, rfiOpen, qualUndrafted, qualFlags, vaPending } = countSubmissionReviewOpenItems(project);
+    b.fieldLine("Open Items", total > 0 ? String(total) : "None — all clear", 150);
+    b.spacer(6);
+
+    b.sectionBar("Open Items");
+    b.fieldLine("RFI Log — open (unanswered)", String(rfiOpen), 320);
+    b.fieldLine("Qualifications — not yet drafted", String(qualUndrafted), 320);
+    b.fieldLine("Qualifications — tied to a Pending VA", String(qualFlags.pendingVa), 320);
+    b.fieldLine("Qualifications — VA Accepted, no Alternate Wording", String(qualFlags.acceptedMissingAlt), 320);
+    if (project.deliveryMethod === "CM at Risk (Interview)") {
+      b.fieldLine("VA Log — still Pending", String(vaPending), 320);
+    }
+    b.spacer(10);
+
+    b.sectionBar("Forms & Logs");
+    buildFormsSummaryEntries(project).forEach((entry) => {
+      b.fieldLine(entry.label, `${entry.filled}/${entry.total}`, 320);
+    });
 
     const bytes = await doc.save();
     return new Blob([bytes], { type: "application/pdf" });
